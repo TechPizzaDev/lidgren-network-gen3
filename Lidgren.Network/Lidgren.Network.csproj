@@ -11,14 +11,6 @@
     <DebugSymbols>true</DebugSymbols>
   </PropertyGroup>
 
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
-    <DocumentationFile>Lidgren.Network.xml</DocumentationFile>
-  </PropertyGroup>
-
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
-    <DocumentationFile>Lidgren.Network.xml</DocumentationFile>
-  </PropertyGroup>
-
   <ItemGroup>
     <None Remove="Documentation\**" />
     <Compile Remove="Documentation\**" />
