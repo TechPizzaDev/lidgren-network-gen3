@@ -131,7 +131,7 @@ namespace Lidgren.Network
                 info.EnsureCapacity(4 + reason.Length + (reason.Length > 126 ? 2 : 1));
                 info.SenderConnection = this;
                 info.SenderEndPoint = RemoteEndPoint;
-                info.Write((byte)Status);
+                info.Write(Status);
                 info.Write(reason);
                 Peer.ReleaseMessage(info);
             }
