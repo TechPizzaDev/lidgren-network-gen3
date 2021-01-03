@@ -249,7 +249,7 @@ namespace Lidgren.Network
                 int count = Count;
                 do
                 {
-                    Span<T> slice = _items.AsSpan(_head, Math.Min(Count, Count - _head));
+                    Span<T> slice = _items.AsSpan(_head, Math.Min(Count, _items.Length - _head));
                     foreach (T item in slice)
                     {
                         destination.Add(item);
