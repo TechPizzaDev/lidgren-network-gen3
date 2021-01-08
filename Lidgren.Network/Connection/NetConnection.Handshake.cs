@@ -446,6 +446,7 @@ namespace Lidgren.Network
             }
         }
 
+        // TODO: consider outputting a NetIncomingMessage instead of byte[]
         private bool ValidateHandshakeData(int offset, int payloadLength, out byte[]? hail, out int hailLength)
         {
             // create temporary incoming message
@@ -459,7 +460,7 @@ namespace Lidgren.Network
                 hailLength = payloadLength - (msg.BytePosition - offset);
                 if (hailLength > 0)
                 {
-                    hail = Peer.StoragePool.Rent(hailLength);
+                    hail = msg.StoragePool.Rent(hailLength);
                     msg.Read(hail.AsSpan(0, hailLength));
                 }
                 else

@@ -23,16 +23,19 @@ namespace Lidgren.Network
         public ListEnumerator(IEnumerator<T> enumerator) : this()
         {
             _enumerator = enumerator ?? throw new ArgumentNullException(nameof(enumerator));
+            Current = default!;
         }
 
         public ListEnumerator(IList<T> list) : this()
         {
             _list = list ?? throw new ArgumentNullException(nameof(list));
+            Current = default!;
         }
 
         public ListEnumerator(IReadOnlyList<T> list) : this()
         {
             _roList = list ?? throw new ArgumentNullException(nameof(list));
+            Current = default!;
         }
 
         public bool MoveNext()

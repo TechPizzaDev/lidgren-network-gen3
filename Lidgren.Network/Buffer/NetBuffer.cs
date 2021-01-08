@@ -6,22 +6,20 @@ namespace Lidgren.Network
 {
     public class NetBuffer : IBitBuffer
     {
-        // TODO: rethink pooling (ArrayPool is probably the best candidate)
-        //       implementing IDisposable for recycling/returning objects would also be wise
-
         /// <summary>
         /// Number of extra bytes to overallocate for message buffers to avoid resizing.
         /// </summary>
-        protected const int ExtraGrowAmount = 32; // TODO: move to config
+        protected const int ExtraGrowAmount = 512; // TODO: move to config
 
         public static Encoding StringEncoding { get; } = new UTF8Encoding(false, false);
 
         private int _bitPosition;
         private int _bitLength;
-        private ArrayPool<byte> _storagePool;
         private byte[] _buffer;
-        private bool _recycleData;
+        private bool _recyclableBuffer;
         private bool _isDisposed;
+
+        public ArrayPool<byte> StoragePool { get; }
 
         public int BitPosition
         {
@@ -72,7 +70,7 @@ namespace Lidgren.Network
                     if (_isDisposed)
                         throw new ObjectDisposedException(GetType().FullName);
 
-                    var newBuffer = _storagePool.Rent(value);
+                    var newBuffer = StoragePool.Rent(value);
                     _buffer.AsMemory(0, ByteLength).CopyTo(newBuffer);
                     SetBuffer(newBuffer);
                 }
@@ -81,7 +79,7 @@ namespace Lidgren.Network
 
         public NetBuffer(ArrayPool<byte> storagePool)
         {
-            _storagePool = storagePool ?? throw new ArgumentNullException(nameof(storagePool));
+            StoragePool = storagePool ?? throw new ArgumentNullException(nameof(storagePool));
             _buffer = Array.Empty<byte>();
         }
 
@@ -111,14 +109,14 @@ namespace Lidgren.Network
 
         public void SetBuffer(byte[] buffer, bool isRecyclable = true)
         {
-            if (_recycleData)
-                _storagePool.Return(_buffer);
+            if (_recyclableBuffer)
+                StoragePool.Return(_buffer);
 
             _buffer = buffer ?? throw new ArgumentNullException(nameof(buffer));
-            _recycleData = buffer.Length > 0 && isRecyclable;
+            _recyclableBuffer = isRecyclable;
         }
 
-        public void Trim()
+        public void TrimExcess()
         {
             if (_bitLength == 0)
                 Recycle();
@@ -126,13 +124,13 @@ namespace Lidgren.Network
 
         private void Recycle()
         {
-            if (_recycleData)
+            if (_recyclableBuffer)
             {
-                _storagePool.Return(_buffer);
+                StoragePool.Return(_buffer);
                 _buffer = Array.Empty<byte>();
                 _bitLength = 0;
                 _bitPosition = 0;
-                _recycleData = false;
+                _recyclableBuffer = false;
             }
         }
 

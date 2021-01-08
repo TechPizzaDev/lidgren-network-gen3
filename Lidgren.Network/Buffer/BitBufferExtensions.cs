@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 
 namespace Lidgren.Network
@@ -9,64 +8,80 @@ namespace Lidgren.Network
         /// <summary>
         /// Ensures that the buffer can hold this number of bytes.
         /// </summary>
-        [SuppressMessage("Design", "CA1062", Justification = "Performance")]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void EnsureCapacity(this IBitBuffer buffer, int byteCount)
+        public static void EnsureByteCapacity(this IBitBuffer buffer, int byteCount)
         {
+            if (buffer == null)
+                throw new ArgumentNullException(nameof(buffer));
+
             buffer.EnsureBitCapacity(byteCount * 8);
         }
 
         /// <summary>
         /// Ensures the buffer can hold it's current bits and the given amount.
         /// </summary>
-        [SuppressMessage("Design", "CA1062", Justification = "Performance")]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void EnsureEnoughBitCapacity(this IBitBuffer buffer, int bitCount)
         {
+            if (buffer == null)
+                throw new ArgumentNullException(nameof(buffer));
+
             buffer.EnsureBitCapacity(buffer.BitLength + bitCount);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void EnsureEnoughBitCapacity(this IBitBuffer buffer, int bitCount, int maxBitCount)
         {
+            if (buffer == null)
+                throw new ArgumentNullException(nameof(buffer));
+
             if (bitCount < 1)
                 throw new ArgumentOutOfRangeException(nameof(bitCount));
-
             if (bitCount > maxBitCount)
                 throw new ArgumentOutOfRangeException(nameof(bitCount));
 
-            buffer.EnsureEnoughBitCapacity(bitCount);
+            buffer.EnsureBitCapacity(buffer.BitLength + bitCount);
         }
 
         /// <summary>
         /// Gets whether <see cref="IBitBuffer.BitPosition"/> is byte-aligned, containing no stray bits.
         /// </summary>
-        [SuppressMessage("Design", "CA1062", Justification = "Performance")]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool IsByteAligned(this IBitBuffer buffer)
         {
+            if (buffer == null)
+                throw new ArgumentNullException(nameof(buffer));
+
             return buffer.BitPosition % 8 == 0;
         }
 
-        [SuppressMessage("Design", "CA1062", Justification = "Performance")]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool HasEnough(this IBitBuffer buffer, int bitCount)
+        public static bool HasEnoughBits(this IBitBuffer buffer, int bitCount)
         {
+            if (buffer == null)
+                throw new ArgumentNullException(nameof(buffer));
+
             return buffer.BitLength - buffer.BitPosition >= bitCount;
         }
 
-        [SuppressMessage("Design", "CA1062", Justification = "Performance")]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void IncrementBitPosition(this IBitBuffer buffer, int bitCount)
         {
+            if (buffer == null)
+                throw new ArgumentNullException(nameof(buffer));
+
             buffer.BitPosition += bitCount;
-            buffer.SetLengthByPosition();
+
+            if (buffer.BitLength < buffer.BitPosition)
+                buffer.BitLength = buffer.BitPosition;
         }
 
-        [SuppressMessage("Design", "CA1062", Justification = "Performance")]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void SetLengthByPosition(this IBitBuffer buffer)
         {
+            if (buffer == null)
+                throw new ArgumentNullException(nameof(buffer));
+
             if (buffer.BitLength < buffer.BitPosition)
                 buffer.BitLength = buffer.BitPosition;
         }

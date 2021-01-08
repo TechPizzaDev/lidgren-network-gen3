@@ -19,15 +19,15 @@ namespace Lidgren.Network
             }
         }
 
-        public static int GetMTU(IEnumerable<NetConnection?> recipients, out int recipientCount)
+        public static int GetMTU(IEnumerable<NetConnection?> connections, out int recipientCount)
         {
-            if (recipients == null)
-                throw new ArgumentNullException(nameof(recipients));
+            if (connections == null)
+                throw new ArgumentNullException(nameof(connections));
 
             int mtu = NetPeerConfiguration.DefaultMTU;
             recipientCount = 0;
 
-            foreach (var conn in recipients.AsListEnumerator())
+            foreach (var conn in connections.AsListEnumerator())
             {
                 if (conn != null)
                 {
@@ -203,7 +203,7 @@ namespace Lidgren.Network
         /// <summary>
         /// Send a message to an unconnected host.
         /// </summary>
-        public void SendUnconnectedMessage(NetOutgoingMessage message, IReadOnlyCollection<IPEndPoint?> recipients)
+        public void SendUnconnectedMessage(NetOutgoingMessage message, IEnumerable<IPEndPoint?> recipients)
         {
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
@@ -256,7 +256,7 @@ namespace Lidgren.Network
             om.IsFragment = false;
             om.ReceiveTime = NetTime.Now;
             om.SenderConnection = null;
-            om.SenderEndPoint = (IPEndPoint)Socket.LocalEndPoint;
+            om.SenderEndPoint = Socket.LocalEndPoint as IPEndPoint;
             LidgrenException.Assert(om.BitLength == message.BitLength);
 
             ReleaseMessage(om);

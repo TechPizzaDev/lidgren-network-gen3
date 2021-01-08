@@ -25,7 +25,7 @@ namespace Lidgren.Network
         public NetOutgoingMessage CreateMessage(int minimumByteCapacity)
         {
             var msg = CreateMessage();
-            msg.EnsureCapacity(minimumByteCapacity);
+            msg.EnsureByteCapacity(minimumByteCapacity);
             return msg;
         }
 
@@ -89,7 +89,7 @@ namespace Lidgren.Network
             //StoragePool.Return(storage);
 
             message.Reset();
-            message.Trim();
+            message.TrimExcess();
             _incomingMessagePool.Enqueue(message);
         }
 
@@ -108,7 +108,7 @@ namespace Lidgren.Network
             foreach (var message in messages)
             {
                 message.Reset();
-                message.Trim();
+                message.TrimExcess();
             }
 
             // then recycle the message objects
@@ -118,7 +118,7 @@ namespace Lidgren.Network
         internal void Recycle(NetOutgoingMessage message)
         {
             message.Reset();
-            message.Trim();
+            message.TrimExcess();
 
             if (_outgoingMessagePool == null)
                 return;

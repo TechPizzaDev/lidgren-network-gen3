@@ -22,7 +22,7 @@ namespace Lidgren.Network
     /// <summary>
     /// Status for a <see cref="NetConnection"/> instance.
     /// </summary>
-    public enum NetConnectionStatus
+    public enum NetConnectionStatus : byte
     {
         /// <summary>
         /// No connection, or attempt, in place

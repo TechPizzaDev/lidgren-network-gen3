@@ -41,6 +41,9 @@ namespace Lidgren.Network
         /// <summary>
         /// Copies bits between buffers.
         /// </summary>
+        /// <param name="sourceBitOffset">The offset in bits into <paramref name="source"/>.</param>
+        /// <param name="bitCount">The amount of bits to copy from <paramref name="source"/>.</param>
+        /// <param name="destinationBitOffset">The offset in bits into <paramref name="destination"/>.</param>
         [MethodImpl(MethodImplOptions.AggressiveOptimization)]
         public static void CopyBits(
             ReadOnlySpan<byte> source, int sourceBitOffset, int bitCount,
@@ -537,11 +540,9 @@ namespace Lidgren.Network
         {
             const int MaxBytesWithoutOverflow = MaxVarInt32Size - 1;
 
-            if (buffer == null)
-                throw new ArgumentNullException(nameof(buffer));
-
             result = 0;
-            if (!buffer.HasEnough(8))
+            
+            if (!buffer.HasEnoughBits(8))
                 return OperationStatus.NeedMoreData;
 
             int startPosition = buffer.BitPosition;
@@ -559,7 +560,7 @@ namespace Lidgren.Network
                     if (tmp <= 0x7Fu)
                         return OperationStatus.Done;
 
-                    if (!buffer.HasEnough(8))
+                    if (!buffer.HasEnoughBits(8))
                         return OperationStatus.NeedMoreData;
                 }
 
@@ -591,11 +592,9 @@ namespace Lidgren.Network
         {
             const int MaxBytesWithoutOverflow = MaxVarInt64Size - 1;
 
-            if (buffer == null)
-                throw new ArgumentNullException(nameof(buffer));
-
             result = 0;
-            if (!buffer.HasEnough(8))
+
+            if (!buffer.HasEnoughBits(8))
                 return OperationStatus.NeedMoreData;
 
             int startPosition = buffer.BitPosition;
@@ -613,7 +612,7 @@ namespace Lidgren.Network
                     if (tmp <= 0x7Fu)
                         return OperationStatus.Done;
 
-                    if (!buffer.HasEnough(8))
+                    if (!buffer.HasEnoughBits(8))
                         return OperationStatus.NeedMoreData;
                 }
 

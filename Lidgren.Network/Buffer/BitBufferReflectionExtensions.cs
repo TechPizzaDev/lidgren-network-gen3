@@ -10,7 +10,8 @@ namespace Lidgren.Network
     public static class BitBufferReflectionExtensions
     {
         // TODO: optimize reflection (generic compiled expressions?)
-        // TODO: create serializer (look at LiteNetLib)
+        // TODO: use source generator or create a better reflectionbased serializer (look at LiteNetLib?)
+        // TODO: "Bit" type to easily represent/pack 1-bit bool
 
         public const BindingFlags DefaultBindingFlags =
             BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Public;

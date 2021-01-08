@@ -168,7 +168,7 @@ namespace Lidgren.Network
             {
                 // Done! Transform this incoming message
                 message.BitLength = 0;
-                message.Trim();
+                message.TrimExcess();
 
                 message.SetBuffer(info.Data);
                 message.BitLength = totalBits;

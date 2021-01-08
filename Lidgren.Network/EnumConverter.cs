@@ -5,50 +5,50 @@ namespace Lidgren.Network
 {
     public static class EnumConverter
     {
-        public static long ToInt64<TEnum>(TEnum value)
+        [CLSCompliant(false)]
+        public static ulong ToUInt64<TEnum>(TEnum value)
             where TEnum : Enum
         {
             return Helper<TEnum>.ConvertFrom(value);
         }
 
-        [CLSCompliant(false)]
-        public static ulong ToUInt64<TEnum>(TEnum value)
+        public static long ToInt64<TEnum>(TEnum value)
             where TEnum : Enum
         {
-            return (ulong)ToInt64(value);
-        }
-
-        public static TEnum ToEnum<TEnum>(long value)
-            where TEnum : Enum
-        {
-            return Helper<TEnum>.ConvertTo(value);
+            return (long)ToUInt64(value);
         }
 
         [CLSCompliant(false)]
         public static TEnum ToEnum<TEnum>(ulong value)
             where TEnum : Enum
         {
-            return ToEnum<TEnum>((long)value);
+            return Helper<TEnum>.ConvertTo(value);
+        }
+
+        public static TEnum ToEnum<TEnum>(long value)
+            where TEnum : Enum
+        {
+            return ToEnum<TEnum>((ulong)value);
         }
 
         private static class Helper<TEnum>
         {
-            public static Func<TEnum, long> ConvertFrom { get; } = GenerateFromConverter();
-            public static Func<long, TEnum> ConvertTo { get; } = GenerateToConverter();
+            public static Func<TEnum, ulong> ConvertFrom { get; } = GenerateFromConverter();
+            public static Func<ulong, TEnum> ConvertTo { get; } = GenerateToConverter();
 
-            private static Func<TEnum, long> GenerateFromConverter()
+            private static Func<TEnum, ulong> GenerateFromConverter()
             {
                 var parameter = Expression.Parameter(typeof(TEnum));
-                var conversion = Expression.Convert(parameter, typeof(long));
-                var method = Expression.Lambda<Func<TEnum, long>>(conversion, parameter);
+                var conversion = Expression.Convert(parameter, typeof(ulong));
+                var method = Expression.Lambda<Func<TEnum, ulong>>(conversion, parameter);
                 return method.Compile();
             }
 
-            private static Func<long, TEnum> GenerateToConverter()
+            private static Func<ulong, TEnum> GenerateToConverter()
             {
-                var parameter = Expression.Parameter(typeof(long));
+                var parameter = Expression.Parameter(typeof(ulong));
                 var conversion = Expression.Convert(parameter, typeof(TEnum));
-                var method = Expression.Lambda<Func<long, TEnum>>(conversion, parameter);
+                var method = Expression.Lambda<Func<ulong, TEnum>>(conversion, parameter);
                 return method.Compile();
             }
         }

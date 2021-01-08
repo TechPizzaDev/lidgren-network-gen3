@@ -102,9 +102,10 @@ namespace Lidgren.Network
         public TimeSpan ReadLocalTime()
         {
             if (SenderConnection == null)
+            {
                 throw new InvalidOperationException(
                     "This message is not associated with a sender connection.");
-
+            }
             return this.ReadLocalTime(SenderConnection);
         }
 

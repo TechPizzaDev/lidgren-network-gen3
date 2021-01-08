@@ -16,22 +16,26 @@ namespace Lidgren.Network
             ReadOnlySpan<char> token)
         {
             // send message to client
-            NetOutgoingMessage msg = CreateMessage(10 + token.Length + 1);
-            msg._messageType = NetMessageType.NatIntroduction;
-            msg.Write((byte)0);
-            msg.Write(hostInternal);
-            msg.Write(hostExternal);
-            msg.Write(token);
-            UnsentUnconnectedMessages.Enqueue((clientExternal, msg));
+            {
+                NetOutgoingMessage msg = CreateMessage(1 + 32 + 2 + token.Length);
+                msg._messageType = NetMessageType.NatIntroduction;
+                msg.Write((byte)0);
+                msg.Write(hostInternal);
+                msg.Write(hostExternal);
+                msg.Write(token);
+                UnsentUnconnectedMessages.Enqueue((clientExternal, msg));
+            }
 
             // send message to host
-            msg = CreateMessage(10 + token.Length + 1);
-            msg._messageType = NetMessageType.NatIntroduction;
-            msg.Write((byte)1);
-            msg.Write(clientInternal);
-            msg.Write(clientExternal);
-            msg.Write(token);
-            UnsentUnconnectedMessages.Enqueue((hostExternal, msg));
+            {
+                NetOutgoingMessage msg = CreateMessage(1 + 32 + 2 + token.Length);
+                msg._messageType = NetMessageType.NatIntroduction;
+                msg.Write((byte)1);
+                msg.Write(clientInternal);
+                msg.Write(clientExternal);
+                msg.Write(token);
+                UnsentUnconnectedMessages.Enqueue((hostExternal, msg));
+            }
         }
 
         /// <summary>

@@ -7,12 +7,11 @@ namespace Lidgren.Network
     public enum NetUnreliableSizeBehaviour
     {
         /// <summary>
-        /// Sending an unreliable message will ignore MTU and
-        /// send everything in a single packet.
+        /// Sending an unreliable message will ignore MTU and send everything in a single packet.
         /// </summary>
         IgnoreMTU = 0,
 
-        // TODO: reclaim memory from fragments
+        // TODO: reclaim memory from fragments please
         /// <summary>
         /// Use normal fragmentation for unreliable messages.
         /// If a fragment is dropped, memory for received fragments is never reclaimed.

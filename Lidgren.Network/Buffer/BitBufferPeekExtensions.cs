@@ -1,6 +1,9 @@
 ﻿using System;
 using System.Buffers;
 using System.Buffers.Binary;
+using System.Diagnostics.CodeAnalysis;
+using System.IO;
+using System.Runtime.CompilerServices;
 
 namespace Lidgren.Network
 {
@@ -15,10 +18,7 @@ namespace Lidgren.Network
         /// <param name="bitCount">The number of bits to read.</param>
         public static bool TryPeekBits(this IBitBuffer buffer, Span<byte> destination, int bitCount)
         {
-            if (buffer == null)
-                throw new ArgumentNullException(nameof(buffer));
-
-            if (!buffer.HasEnough(bitCount))
+            if (!buffer.HasEnoughBits(bitCount))
                 return false;
 
             NetBitWriter.CopyBits(buffer.GetBuffer(), buffer.BitPosition, bitCount, destination, 0);
@@ -64,13 +64,10 @@ namespace Lidgren.Network
         /// <param name="destination">The destination span.</param>
         public static bool TryPeek(this IBitBuffer buffer, Span<byte> destination)
         {
-            if (buffer == null)
-                throw new ArgumentNullException(nameof(buffer));
-
             if (!buffer.IsByteAligned())
                 return buffer.TryPeekBits(destination, destination.Length * 8);
 
-            if (!buffer.HasEnough(destination.Length))
+            if (!buffer.HasEnoughBits(destination.Length))
                 return false;
 
             buffer.GetBuffer().AsSpan(buffer.BytePosition, destination.Length).CopyTo(destination);
@@ -91,9 +88,7 @@ namespace Lidgren.Network
         /// </summary>
         public static bool PeekBool(this IBitBuffer buffer)
         {
-            if (buffer == null)
-                throw new ArgumentNullException(nameof(buffer));
-            if (!buffer.HasEnough(1))
+            if (!buffer.HasEnoughBits(1))
                 throw new EndOfMessageException();
 
             return NetBitWriter.ReadByteUnchecked(buffer.GetBuffer(), buffer.BitPosition, 1) > 0;
@@ -105,9 +100,7 @@ namespace Lidgren.Network
         [CLSCompliant(false)]
         public static sbyte PeekSByte(this IBitBuffer buffer)
         {
-            if (buffer == null)
-                throw new ArgumentNullException(nameof(buffer));
-            if (!buffer.HasEnough(8))
+            if (!buffer.HasEnoughBits(8))
                 throw new EndOfMessageException();
 
             return (sbyte)NetBitWriter.ReadByteUnchecked(buffer.GetBuffer(), buffer.BitPosition, 8);
@@ -118,9 +111,7 @@ namespace Lidgren.Network
         /// </summary>
         public static byte PeekByte(this IBitBuffer buffer)
         {
-            if (buffer == null)
-                throw new ArgumentNullException(nameof(buffer));
-            if (!buffer.HasEnough(8))
+            if (!buffer.HasEnoughBits(8))
                 throw new EndOfMessageException();
 
             return NetBitWriter.ReadByteUnchecked(buffer.GetBuffer(), buffer.BitPosition, 8);
@@ -131,9 +122,7 @@ namespace Lidgren.Network
         /// </summary>
         public static byte PeekByte(this IBitBuffer buffer, int bitCount)
         {
-            if (buffer == null)
-                throw new ArgumentNullException(nameof(buffer));
-            if (!buffer.HasEnough(bitCount))
+            if (!buffer.HasEnoughBits(bitCount))
                 throw new EndOfMessageException();
 
             return NetBitWriter.ReadByte(buffer.GetBuffer(), buffer.BitPosition, bitCount);
@@ -365,13 +354,27 @@ namespace Lidgren.Network
 
         #endregion
 
-        public static bool PeekStringHeader(this IBitBuffer buffer, out NetStringHeader header)
+        //public static bool PeekStringHeader(this IBitBuffer buffer, out int length)
+        //{
+        //    if (buffer == null)
+        //        throw new ArgumentNullException(nameof(buffer));
+        //
+        //    int startPosition = buffer.BitPosition;
+        //    bool read = buffer.ReadStringLength(out length);
+        //    buffer.BitPosition = startPosition;
+        //    return read;
+        //}
+
+        /// <summary>
+        /// Reads a <see cref="string"/> without advancing the read position.
+        /// </summary>
+        public static bool PeekString(this IBitBuffer buffer, [MaybeNullWhen(false)] out string result, bool replaceInvalidSequences = true)
         {
             if (buffer == null)
                 throw new ArgumentNullException(nameof(buffer));
 
             int startPosition = buffer.BitPosition;
-            bool read = buffer.ReadStringHeader(out header);
+            bool read = buffer.ReadString(out result, replaceInvalidSequences);
             buffer.BitPosition = startPosition;
             return read;
         }
@@ -379,15 +382,20 @@ namespace Lidgren.Network
         /// <summary>
         /// Reads a <see cref="string"/> without advancing the read position.
         /// </summary>
+        /// <exception cref="InvalidDataException"></exception>
+        public static string PeekString(this IBitBuffer buffer, bool replaceInvalidSequences)
+        {
+            if (!buffer.PeekString(out string? value, replaceInvalidSequences))
+                throw new InvalidDataException();
+            return value;
+        }
+
+        /// <summary>
+        /// Reads a <see cref="string"/> without advancing the read position.
+        /// </summary>
         public static string PeekString(this IBitBuffer buffer)
         {
-            if (buffer == null)
-                throw new ArgumentNullException(nameof(buffer));
-
-            int startPosition = buffer.BitPosition;
-            string str = buffer.ReadString();
-            buffer.BitPosition = startPosition;
-            return str;
+            return buffer.PeekString(replaceInvalidSequences: true);
         }
 
         /// <summary>
@@ -404,8 +412,26 @@ namespace Lidgren.Network
         public static TEnum PeekEnum<TEnum>(this IBitBuffer buffer)
             where TEnum : Enum
         {
-            long value = buffer.PeekVarInt64();
-            return EnumConverter.ToEnum<TEnum>(value);
+            if (Unsafe.SizeOf<TEnum>() == 1)
+            {
+                byte b = buffer.PeekByte();
+                return Unsafe.As<byte, TEnum>(ref b);
+            }
+            else if (Unsafe.SizeOf<TEnum>() == 2)
+            {
+                ushort b = buffer.PeekUInt16();
+                return Unsafe.As<ushort, TEnum>(ref b);
+            }
+            else if (Unsafe.SizeOf<TEnum>() == 4)
+            {
+                ulong value = buffer.PeekVarUInt32();
+                return EnumConverter.ToEnum<TEnum>(value);
+            }
+            else
+            {
+                ulong value = buffer.PeekVarUInt64();
+                return EnumConverter.ToEnum<TEnum>(value);
+            }
         }
     }
 }

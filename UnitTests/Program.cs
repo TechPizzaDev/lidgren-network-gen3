@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.Threading;
 using System.Buffers;
+using System.Runtime.CompilerServices;
 
 namespace UnitTests
 {
@@ -40,7 +41,7 @@ namespace UnitTests
             var config = new NetPeerConfiguration("unittests");
             config.EnableMessageType(NetIncomingMessageType.UnconnectedData);
             config.EnableUPnP = true;
-
+            
             var peer = new NetPeer(config);
             peer.Start(); // needed for initialization
 
@@ -111,7 +112,7 @@ namespace UnitTests
             Console.WriteLine($"Waiting for messages with {readTimeout}ms timeout...");
             foreach (var thread in readThreads)
                 thread.Join();
-            
+
             Console.WriteLine();
             Console.WriteLine("Tests finished");
         }

@@ -129,6 +129,8 @@ namespace Lidgren.Network
                 if (expectedCount > Capacity)
                     AddCapacity(expectedCount);
 
+                // TODO: possibly optimize when collection is a List
+
                 foreach (T item in items.AsListEnumerator())
                 {
                     // check capacity as we cannot be sure about the resulting count

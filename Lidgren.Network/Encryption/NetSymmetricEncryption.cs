@@ -49,7 +49,7 @@ namespace Lidgren.Network
             int length = (int)ms.Length;
 
             message.BitPosition = 0;
-            message.EnsureCapacity(length + 4);
+            message.EnsureByteCapacity(length + 4);
             message.Write((uint)unEncLenBits);
             message.Write(ms.GetBuffer().AsSpan(0, length));
             message.ByteLength = length + 4;
@@ -64,8 +64,9 @@ namespace Lidgren.Network
 
             int unEncLenBits = (int)message.ReadUInt32();
             int byteLen = NetBitWriter.BytesForBits(unEncLenBits);
-            var result = Peer.StoragePool.Rent(byteLen);
-
+            var result = message.StoragePool.Rent(byteLen);
+            
+            // TODO: create stream that takes Memory<byte> overload
             fixed (byte* msgPtr = message.GetBuffer())
             {
                 using var ms = new UnmanagedMemoryStream(msgPtr + 4, message.ByteLength - 4);

@@ -34,10 +34,14 @@ namespace Lidgren.Network
         void EnsureBitCapacity(int bitCount);
 
         /// <summary>
-        /// Reduces capacity.
+        /// Reduces capacity down to what's needed for the current data.
         /// </summary>
-        void Trim();
+        void TrimExcess();
 
         byte[] GetBuffer();
     }
+
+    //public abstract class BitBuffer : IBitBuffer
+    //{
+    //}
 }

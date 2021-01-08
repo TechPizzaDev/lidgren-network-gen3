@@ -1,9 +1,7 @@
 ﻿using System;
 using System.Buffers.Binary;
-using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Runtime.CompilerServices;
-using System.Text.Unicode;
 
 namespace Lidgren.Network
 {
@@ -12,7 +10,9 @@ namespace Lidgren.Network
         /// <summary>
         /// Writes a certain amount of bits from a span.
         /// </summary>
-        public static void Write(this IBitBuffer buffer, ReadOnlySpan<byte> source, int sourceBitOffset, int bitCount)
+        /// <param name="bitOffset">The offset in bits into <paramref name="source"/>.</param>
+        /// <param name="bitCount">The amount of bits to copy from <paramref name="source"/>.</param>
+        public static void Write(this IBitBuffer buffer, ReadOnlySpan<byte> source, int bitOffset, int bitCount)
         {
             if (buffer == null)
                 throw new ArgumentNullException(nameof(buffer));
@@ -21,7 +21,7 @@ namespace Lidgren.Network
                 return;
 
             buffer.EnsureEnoughBitCapacity(bitCount);
-            NetBitWriter.CopyBits(source, sourceBitOffset, bitCount, buffer.GetBuffer(), buffer.BitPosition);
+            NetBitWriter.CopyBits(source, bitOffset, bitCount, buffer.GetBuffer(), buffer.BitPosition);
             buffer.IncrementBitPosition(bitCount);
         }
 
@@ -56,11 +56,21 @@ namespace Lidgren.Network
         #region Bool
 
         /// <summary>
-        /// Writes a <see cref="bool"/> value using 1 bit.
+        /// Writes a <see cref="bool"/> value using 8 bits.
         /// </summary>
-        [SuppressMessage("Design", "CA1062", Justification = "Performance")]
         public static void Write(this IBitBuffer buffer, bool value)
         {
+            buffer.Write(value ? (byte)1 : (byte)0);
+        }
+
+        /// <summary>
+        /// Writes a <see cref="bool"/> value using 1 bit.
+        /// </summary>
+        public static void WriteBit(this IBitBuffer buffer, bool value)
+        {
+            if (buffer == null)
+                throw new ArgumentNullException(nameof(buffer));
+
             buffer.EnsureEnoughBitCapacity(1);
             NetBitWriter.WriteByteUnchecked(value ? 1 : 0, 1, buffer.GetBuffer(), buffer.BitPosition);
             buffer.IncrementBitPosition(1);
@@ -73,7 +83,6 @@ namespace Lidgren.Network
         /// <summary>
         /// Writes a <see cref="sbyte"/>.
         /// </summary>
-        [SuppressMessage("Design", "CA1062", Justification = "Performance")]
         [CLSCompliant(false)]
         public static void Write(this IBitBuffer buffer, sbyte value)
         {
@@ -85,7 +94,6 @@ namespace Lidgren.Network
         /// <summary>
         /// Write a <see cref="byte"/>.
         /// </summary>
-        [SuppressMessage("Design", "CA1062", Justification = "Performance")]
         public static void Write(this IBitBuffer buffer, byte value)
         {
             buffer.EnsureEnoughBitCapacity(8);
@@ -96,7 +104,6 @@ namespace Lidgren.Network
         /// <summary>
         /// Writes a <see cref="byte"/> using 1 to 8 bits.
         /// </summary>
-        [SuppressMessage("Design", "CA1062", Justification = "Performance")]
         public static void Write(this IBitBuffer buffer, byte source, int bitCount)
         {
             buffer.EnsureEnoughBitCapacity(bitCount, maxBitCount: 8);
@@ -203,6 +210,26 @@ namespace Lidgren.Network
         }
 
         #endregion
+
+        /// <summary>
+        /// Writes a <see cref="short"/> using 1 to 16 bits.
+        /// </summary>
+        public static void Write(this IBitBuffer buffer, short value, int bitCount)
+        {
+            Span<byte> tmp = stackalloc byte[sizeof(short)];
+            if (bitCount != tmp.Length * 8)
+            {
+                // make first bit sign
+                int signBit = 1 << (bitCount - 1);
+                if (value < 0)
+                    value = (short)((-value - 1) | signBit);
+                else
+                    value = (short)(value & (~signBit));
+            }
+
+            BinaryPrimitives.WriteInt16LittleEndian(tmp, value);
+            buffer.Write(tmp, bitCount);
+        }
 
         /// <summary>
         /// Writes an unsigned <see cref="ushort"/> using 1 to 16 bits.
@@ -351,7 +378,7 @@ namespace Lidgren.Network
         public static void WriteSigned(this IBitBuffer buffer, float value, int bitCount)
         {
             LidgrenException.Assert(
-                (value >= -1.0) && (value <= 1.0), 
+                (value >= -1.0) && (value <= 1.0),
                 " WriteSignedSingle() must be passed a float in the range -1 to 1; val is " + value);
 
             float unit = (value + 1f) * 0.5f;
@@ -382,7 +409,7 @@ namespace Lidgren.Network
         public static void WriteRanged(this IBitBuffer buffer, float value, float min, float max, int bitCount)
         {
             LidgrenException.Assert(
-                (value >= min) && (value <= max), 
+                (value >= min) && (value <= max),
                 " WriteRangedSingle() must be passed a float in the range MIN to MAX; val is " + value);
 
             float range = max - min;
@@ -409,59 +436,51 @@ namespace Lidgren.Network
             return numBits;
         }
 
-        /// <summary>
-        /// Write characters from a span, readable as a string.
-        /// </summary>
-        public static void Write(this IBitBuffer buffer, ReadOnlySpan<char> source)
+        public static NetBlockWriter OpenBlockWriter(this IBitBuffer buffer, bool isFinalBlock)
         {
-            if (source.IsEmpty)
-            {
-                buffer.Write(NetStringHeader.Empty);
-                return;
-            }
-
-            if (buffer == null)
-                throw new ArgumentNullException(nameof(buffer));
-
-            var initialHeader = new NetStringHeader(source.Length, null);
-            int headerBitCount = initialHeader.MinimumHeaderSize * 8;
-            buffer.EnsureBitCapacity(headerBitCount + initialHeader.ExpectedByteCount * 8);
-
-            int startPosition = buffer.BitPosition;
-            // Here we reserve space for the header.
-            buffer.BitPosition += headerBitCount;
-
-            Span<byte> writeBuffer = stackalloc byte[2048];
-            int byteCount = 0;
-            var charSource = source;
-            do
-            {
-                var status = Utf8.FromUtf16(
-                    charSource, writeBuffer, out int charsRead, out int bytesWritten, true, true);
-                // TODO: check status
-
-                charSource = charSource[charsRead..];
-
-                byteCount += bytesWritten;
-                buffer.Write(writeBuffer.Slice(0, bytesWritten));
-            }
-            while (charSource.Length > 0);
-
-            int endPosition = buffer.BitPosition;
-
-            // Write header with exact values in previously reserved space.
-            buffer.BitPosition = startPosition;
-            buffer.Write(new NetStringHeader(source.Length, byteCount));
-
-            buffer.BitPosition = endPosition;
+            return new NetBlockWriter(buffer, isFinalBlock);
         }
 
         /// <summary>
-        /// Writes a <see cref="string"/>.
+        /// Writes byte blocks from a span of bytes.
+        /// </summary>
+        public static void Write(this IBitBuffer buffer, ReadOnlySpan<byte> source, bool isFinalBlock)
+        {
+            using NetBlockWriter writer = buffer.OpenBlockWriter(isFinalBlock);
+            writer.Write(source);
+        }
+
+        /// <summary>
+        /// Writes byte blocks of UTF-8 characters from a span of characters.
+        /// </summary>
+        public static void Write(this IBitBuffer buffer, ReadOnlySpan<char> source, bool isFinalBlock)
+        {
+            using NetBlockWriter writer = buffer.OpenBlockWriter(isFinalBlock);
+            writer.Write(source);
+        }
+
+        /// <summary>
+        /// Writes byte blocks with final block of UTF-8 characters from a span of characters.
+        /// </summary>
+        public static void Write(this IBitBuffer buffer, ReadOnlySpan<char> source)
+        {
+            buffer.Write(source, isFinalBlock: true);
+        }
+
+        /// <summary>
+        /// Writes byte blocks of UTF-8 characters from a <see cref="string"/>.
+        /// </summary>
+        public static void Write(this IBitBuffer buffer, string? source, bool isFinalBlock)
+        {
+            buffer.Write(source.AsSpan(), isFinalBlock);
+        }
+
+        /// <summary>
+        /// Writes byte blocks with final block of UTF-8 characters from a <see cref="string"/>.
         /// </summary>
         public static void Write(this IBitBuffer buffer, string? source)
         {
-            buffer.Write(source.AsSpan());
+            buffer.Write(source, isFinalBlock: true);
         }
 
         /// <summary>
@@ -474,7 +493,7 @@ namespace Lidgren.Network
 
             Span<byte> tmp = stackalloc byte[16];
             if (!address.TryWriteBytes(tmp, out int count))
-                throw new ArgumentException("Failed to get address bytes.");
+                throw new ArgumentException("Failed to get address bytes.", nameof(address));
             tmp = tmp.Slice(0, count);
 
             buffer.Write((byte)tmp.Length);
@@ -521,46 +540,27 @@ namespace Lidgren.Network
         }
 
         public static void Write<TEnum>(this IBitBuffer buffer, TEnum value)
-            where TEnum : Enum
+            where TEnum : unmanaged, Enum
         {
-            buffer.WriteVar(EnumConverter.ToInt64(value));
-        }
-
-        public static void Write(this IBitBuffer buffer, NetStringHeader value)
-        {
-            if (buffer == null)
-                throw new ArgumentNullException(nameof(buffer));
-
-            buffer.WriteVar((uint)value.CharCount);
-
-            if (value.CharCount == 0)
-                return;
-
-            // Both MaxByteCount and ByteCount should occupy the same amount
-            // of bytes when written as variable ints. That is why we need to 
-            // check if the encoded ByteCount has to be padded "empty" bytes.
-            if (value.ByteCount == null)
+            if (Unsafe.SizeOf<TEnum>() == 1)
             {
-                buffer.WriteVar((uint)value.MaxByteCount);
+                byte v = Unsafe.As<TEnum, byte>(ref value);
+                buffer.Write(v);
+            }
+            else if (Unsafe.SizeOf<TEnum>() == 2)
+            {
+                ushort v = Unsafe.As<TEnum, ushort>(ref value);
+                buffer.Write(v);
+            }
+            else if (Unsafe.SizeOf<TEnum>() == 4)
+            {
+                uint v = (uint)EnumConverter.ToUInt64(value);
+                buffer.WriteVar(v);
             }
             else
             {
-                buffer.WriteVar((uint)value.ByteCount);
-
-                int sizeDiff = value.MaxByteCountVarSize - value.ExpectedByteCountVarSize;
-                if (sizeDiff > 0)
-                {
-                    buffer.BitPosition -= 1; // rewind to last byte's high bit
-                    buffer.Write(true); // set high bit to true
-
-                    // Write empty 7-bit values with high bit set.
-                    // This should only write if size diff is more than 1, 
-                    // which should practically never occur.
-                    for (int i = 0; i < sizeDiff - 1; i++)
-                        buffer.Write((byte)0b1000_0000);
-
-                    buffer.Write((byte)0);
-                }
+                ulong v = EnumConverter.ToUInt64(value);
+                buffer.WriteVar(v);
             }
         }
 
@@ -601,4 +601,5 @@ namespace Lidgren.Network
             buffer.WritePadBits(byteCount * 8);
         }
     }
+
 }
