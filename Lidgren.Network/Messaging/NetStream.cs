@@ -277,17 +277,18 @@ namespace Lidgren.Network
 
         protected override void Dispose(bool disposing)
         {
-            base.Dispose(disposing);
-
             if (!IsDisposed)
             {
-                Flush();
+                if (disposing)
+                {
+                    Flush();
 
-                NetSendResult result = SendClose();
-                // TODO: check result
-
+                    NetSendResult result = SendClose();
+                    // TODO: check result
+                }
                 IsDisposed = true;
             }
+            base.Dispose(disposing);
         }
     }
 }

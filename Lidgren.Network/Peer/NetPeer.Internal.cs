@@ -3,9 +3,12 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace Lidgren.Network
 {
@@ -101,7 +104,7 @@ namespace Lidgren.Network
 
         private Socket BindSocket(bool reuseAddress)
         {
-            var now = NetTime.Now;
+            TimeSpan now = NetTime.Now;
             if (Socket != null && now - _lastSocketBind < TimeSpan.FromSeconds(1.0))
             {
                 LogDebug("Suppressed socket rebind; last bound " + (now - _lastSocketBind) + " ago");
@@ -115,15 +118,19 @@ namespace Lidgren.Network
                 mutex.WaitOne();
 
                 if (Socket == null)
+                {
                     Socket = new Socket(
                         Configuration.LocalAddress.AddressFamily, SocketType.Dgram, ProtocolType.Udp);
+                }
 
                 if (reuseAddress)
                     Socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
 
                 Socket.ReceiveBufferSize = Configuration.ReceiveBufferSize;
                 Socket.SendBufferSize = Configuration.SendBufferSize;
+
                 Socket.Blocking = false;
+                Socket.EnableBroadcast = true;
 
                 if (Configuration.DualStack)
                 {
@@ -151,6 +158,7 @@ namespace Lidgren.Network
                 }
                 catch
                 {
+                    // TODO: handle this with catching the error
                     // ignore; SIO_UDP_CONNRESET not supported on this platform
                 }
             }
@@ -160,7 +168,7 @@ namespace Lidgren.Network
                 mutex.Dispose();
             }
 
-            var boundEp = (Socket.LocalEndPoint as IPEndPoint) ??
+            IPEndPoint boundEp = (Socket.LocalEndPoint as IPEndPoint) ??
                 throw new Exception("The socket has no bound endpoint.");
 
             LogDebug("Socket bound to " + boundEp + ": " + Socket.IsBound);
@@ -185,7 +193,7 @@ namespace Lidgren.Network
                 Handshakes.Clear();
 
                 // bind to socket
-                var socket = BindSocket(false);
+                Socket socket = BindSocket(false);
 
                 // TODO: recycle buffers
                 _receiveBuffer = new byte[Configuration.ReceiveBufferSize];
@@ -193,16 +201,27 @@ namespace Lidgren.Network
 
                 _readHelperMessage = CreateIncomingMessage(NetIncomingMessageType.Error);
                 _readHelperMessage.SetBuffer(_receiveBuffer, false);
-                
-                string? endPointString = socket.LocalEndPoint?.ToString();
-                var epBytes = MemoryMarshal.AsBytes(endPointString.AsSpan());
-                var macBytes = NetUtility.GetPhysicalAddress()?.GetAddressBytes() ?? Array.Empty<byte>();
-                int combinedLength = epBytes.Length + macBytes.Length;
-                var combined = new byte[combinedLength];
-                epBytes.CopyTo(combined);
-                macBytes.CopyTo(combined.AsSpan(epBytes.Length));
 
-                var hash = NetUtility.Sha256.ComputeHash(combined);
+                string? endPointString = socket.LocalEndPoint?.ToString();
+                PhysicalAddress? physicalAddress = NetUtility.GetPhysicalAddress();
+                byte[] idData;
+
+                if (endPointString == null && physicalAddress == null)
+                {
+                    // This should realistically not happen as endPointString should not be null.
+                    idData = Guid.NewGuid().ToByteArray();
+                }
+                else
+                {
+                    ReadOnlySpan<byte> epBytes = MemoryMarshal.AsBytes(endPointString.AsSpan());
+                    byte[] macBytes = physicalAddress?.GetAddressBytes() ?? Array.Empty<byte>();
+
+                    idData = new byte[epBytes.Length + macBytes.Length];
+                    epBytes.CopyTo(idData);
+                    macBytes.CopyTo(idData.AsSpan(epBytes.Length));
+                }
+
+                byte[] hash = SHA256.HashData(idData);
                 UniqueIdentifier = BitConverter.ToInt64(hash);
 
                 Status = NetPeerStatus.Running;
@@ -304,7 +323,7 @@ namespace Lidgren.Network
         {
             AssertIsOnLibraryThread();
 
-            var connections = Connections;
+            List<NetConnection> connections = Connections;
 
             // TODO: improve CHBpS constants
             TimeSpan now = NetTime.Now;
@@ -321,7 +340,7 @@ namespace Lidgren.Network
                 // do handshake heartbeats
                 if (!Handshakes.IsEmpty)
                 {
-                    foreach (var conn in Handshakes.Values)
+                    foreach (NetConnection conn in Handshakes.Values)
                     {
                         conn.UnconnectedHeartbeat(now);
 
@@ -366,7 +385,7 @@ namespace Lidgren.Network
                     NetOutgoingMessage om = unsent.Message;
                     int length = 0;
                     om.Encode(_sendBuffer, ref length, 0);
-                    SendPacket(length, unsent.EndPoint, 1, out bool connReset);
+                    SendPacket(length, unsent.EndPoint, 1);
 
                     Interlocked.Decrement(ref om._recyclingCount);
                     if (om._recyclingCount <= 0)
@@ -383,9 +402,6 @@ namespace Lidgren.Network
             // wait up to 10 ms for data to arrive
             if (!Socket.Poll(10000, SelectMode.SelectRead))
                 return;
-
-            //if (m_socket.Available < 1)
-            //	return;
 
             // update now
             now = NetTime.Now;

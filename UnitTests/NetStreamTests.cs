@@ -22,7 +22,8 @@ namespace UnitTests
                 var config = new NetPeerConfiguration(appId)
                 {
                     AcceptIncomingConnections = true,
-                    Port = port
+                    Port = port,
+                    AutoExpandMTU = true
                 };
                 config.DisableMessageType(NetIncomingMessageType.DebugMessage);
                 var server = new NetServer(config);
@@ -75,6 +76,10 @@ namespace UnitTests
                             Console.WriteLine("Server Data: " + message.ReadString());
                             break;
 
+                        case NetIncomingMessageType.ErrorMessage:
+                            Console.WriteLine("Server Error: " + message.ReadString());
+                            break;
+
                         case NetIncomingMessageType.StreamMessage:
                         {
                             var type = (NetStreamMessageType)message.ReadByte();
@@ -102,7 +107,6 @@ namespace UnitTests
                                     stream = new NetStream(server.DefaultScheduler, connection, channel);
 
                                     OnStream(stream);
-                                    stream.Peer.Recycle(message);
                                     break;
 
                                 case NetStreamMessageType.Data:
@@ -128,100 +132,113 @@ namespace UnitTests
                         }
 
                         default:
-                            Console.WriteLine(message.MessageType);
+                            Console.WriteLine("Server " + message.MessageType);
                             break;
                     }
                 }
             });
 
-            var clientThread = new Thread(() =>
+            Thread[] clientThreads = new Thread[2];
+
+            for (int i = 0; i < clientThreads.Length; i++)
             {
-                var config = new NetPeerConfiguration(appId)
+                clientThreads[i] = new Thread(() =>
                 {
-                    AcceptIncomingConnections = false
-                };
-                config.DisableMessageType(NetIncomingMessageType.DebugMessage);
-                var client = new NetClient(config);
-                client.Start();
-
-                var connection = client.Connect(new IPEndPoint(IPAddress.Loopback, port));
-                while (connection.Status != NetConnectionStatus.Connected)
-                {
-                    if (connection.Status == NetConnectionStatus.Disconnected)
-                        throw new Exception("Failed to connect.");
-                    Thread.Sleep(1);
-                }
-
-                var msg = client.CreateMessage("hello");
-                connection.SendMessage(msg, NetDeliveryMethod.ReliableOrdered, 0);
-
-                for (int j = 0; j < 8; j++)
-                {
-                    int channel = j;
-                    Task.Run(() =>
+                    var config = new NetPeerConfiguration(appId)
                     {
-                        try
-                        {
-                            var stream = new NetStream(client.DefaultScheduler, connection, channel);
-                            Span<byte> span = stackalloc byte[1024 * 16];
-                            for (int i = 0; i < 1024 * 1024 * 16; i += span.Length)
-                            {
-                                stream.Write(span);
-                                Thread.Sleep(1);
-                            }
-                            stream.Dispose();
-                            Console.WriteLine($"Server Stream {channel} Data Written");
-                        }
-                        catch (Exception ex)
-                        {
-                            Console.WriteLine(ex);
-                        }
-                    });
-                }
+                        AcceptIncomingConnections = false,
+                        AutoExpandMTU = true
+                    };
+                    config.DisableMessageType(NetIncomingMessageType.DebugMessage);
+                    var client = new NetClient(config);
+                    client.Start();
 
-                while (client.TryReadMessage(5000, out var message))
-                {
-                    switch (message.MessageType)
+                    NetConnection connection = client.Connect(new IPEndPoint(IPAddress.Loopback, port));
+
+                    while (connection.Status != NetConnectionStatus.Connected)
                     {
-                        case NetIncomingMessageType.StatusChanged:
-                            Console.WriteLine("Client Status: " + message.ReadEnum<NetConnectionStatus>());
-                            break;
-
-                        case NetIncomingMessageType.DebugMessage:
-                            Console.WriteLine("Client Debug: " + message.ReadString());
-                            break;
-
-                        case NetIncomingMessageType.WarningMessage:
-                            Console.WriteLine("Client Warning: " + message.ReadString());
-                            break;
-
-                        case NetIncomingMessageType.Data:
-                            Console.WriteLine("Client Data: " + message.ReadString());
-                            break;
-
-                        case NetIncomingMessageType.StreamMessage:
-                        {
-                            var type = (NetStreamMessageType)message.ReadByte();
-                            int channel = message.SequenceChannel;
-
-                            Console.WriteLine("Client Stream: " + type);
-
-                            client.Recycle(message);
-                            break;
-                        }
-
-                        default:
-                            Console.WriteLine(message.MessageType);
-                            break;
+                        if (connection.Status == NetConnectionStatus.Disconnected)
+                            throw new Exception("Failed to connect.");
+                        Thread.Sleep(1);
                     }
-                }
-            });
+
+                    var msg = client.CreateMessage("hello");
+                    connection.SendMessage(msg, NetDeliveryMethod.ReliableOrdered, 0);
+
+                    for (int j = 0; j < 4; j++)
+                    {
+                        int channel = j;
+                        Task.Run(() =>
+                        {
+                            try
+                            {
+                                var stream = new NetStream(client.DefaultScheduler, connection, channel);
+                                Span<byte> span = stackalloc byte[1024 * 64];
+                                for (int i = 0; i < 1024 * 1024 * 32; i += span.Length)
+                                {
+                                    stream.Write(span);
+                                    Thread.Sleep(100);
+                                }
+                                stream.Dispose();
+                                Console.WriteLine($"Server Stream {channel} Data Written");
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine(ex);
+                            }
+                        });
+                    }
+
+                    while (client.TryReadMessage(5000, out var message))
+                    {
+                        switch (message.MessageType)
+                        {
+                            case NetIncomingMessageType.StatusChanged:
+                                Console.WriteLine("Client Status: " + message.ReadEnum<NetConnectionStatus>());
+                                break;
+
+                            case NetIncomingMessageType.DebugMessage:
+                                Console.WriteLine("Client Debug: " + message.ReadString());
+                                break;
+
+                            case NetIncomingMessageType.WarningMessage:
+                                Console.WriteLine("Client Warning: " + message.ReadString());
+                                break;
+
+                            case NetIncomingMessageType.Data:
+                                Console.WriteLine("Client Data: " + message.ReadString());
+                                break;
+
+                            case NetIncomingMessageType.ErrorMessage:
+                                Console.WriteLine("Client Error: " + message.ReadString());
+                                break;
+
+                            case NetIncomingMessageType.StreamMessage:
+                            {
+                                var type = (NetStreamMessageType)message.ReadByte();
+                                int channel = message.SequenceChannel;
+
+                                Console.WriteLine("Client Stream: " + type);
+                                break;
+                            }
+
+                            default:
+                                Console.WriteLine("Client " + message.MessageType);
+                                break;
+                        }
+
+                        client.Recycle(message);
+                    }
+                });
+            }
 
             serverThread.Start();
-            clientThread.Start();
+            for (int i = 0; i < clientThreads.Length; i++)
+                clientThreads[i].Start();
 
             serverThread.Join();
-            clientThread.Join();
+            for (int i = 0; i < clientThreads.Length; i++)
+                clientThreads[i].Join();
         }
     }
 }

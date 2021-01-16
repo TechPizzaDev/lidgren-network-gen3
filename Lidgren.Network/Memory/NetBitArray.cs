@@ -1,41 +1,25 @@
-﻿/* Copyright (c) 2010 Michael Lidgren
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software
-and associated documentation files (the "Software"), to deal in the Software without
-restriction, including without limitation the rights to use, copy, modify, merge, publish,
-distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom
-the Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or
-substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
-INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
-PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
-LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
-USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-*/
-using System;
+﻿using System;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace Lidgren.Network
 {
-    /// <summary>
-    /// Fixed size vector of bits.
-    /// </summary>
-    public sealed class NetBitVector
-    {
-        private const int BitsPerElement = sizeof(int) * 8;
+    // TODO: optimize
 
-        private readonly uint[] _data;
+    /// <summary>
+    /// Mutable array of bits.
+    /// </summary>
+    public readonly struct NetBitArray : IEquatable<NetBitArray>
+    {
+        public static int BitsPerElement => sizeof(uint) * 8;
+
+        private readonly uint[]? _data;
 
         /// <summary>
-        /// Gets the number of bits stored in this vector.
+        /// Gets the total number of stored bits.
         /// </summary>
-        public int Capacity { get; }
+        public int Length { get; }
 
         /// <summary>
         /// Gets the number of bits set to one.
@@ -45,22 +29,28 @@ namespace Lidgren.Network
             get
             {
                 int sum = 0;
-                for (int i = 0; i < _data.Length; i++)
-                    sum += BitOperations.PopCount(_data[i]);
+                if (_data != null)
+                {
+                    for (int i = 0; i < _data.Length; i++)
+                        sum += BitOperations.PopCount(_data[i]);
+                }
                 return sum;
             }
         }
 
         /// <summary>
-        /// Gets whether this vector only contains bits set to zero.
+        /// Gets whether all bits are set to zero.
         /// </summary>
         public bool IsZero
         {
             get
             {
-                for (int i = 0; i < _data.Length; i++)
-                    if (BitOperations.PopCount(_data[i]) != 0)
-                        return false;
+                if (_data != null)
+                {
+                    for (int i = 0; i < _data.Length; i++)
+                        if (BitOperations.PopCount(_data[i]) != 0)
+                            return false;
+                }
                 return true;
             }
         }
@@ -76,21 +66,30 @@ namespace Lidgren.Network
         }
 
         /// <summary>
-        /// Constructs the bit vector with a certain capacity.
+        /// Constructs the bit array with a certain capacity.
         /// </summary>
-        public NetBitVector(int bitsCapacity)
+        public NetBitArray(int bitCapacity)
         {
-            if (bitsCapacity < 0)
-                throw new ArgumentOutOfRangeException(nameof(bitsCapacity));
+            if (bitCapacity < 0)
+                throw new ArgumentOutOfRangeException(nameof(bitCapacity));
 
-            Capacity = bitsCapacity;
-            _data = new uint[(Capacity + BitsPerElement - 1) / BitsPerElement];
+            Length = bitCapacity;
+            _data = bitCapacity == 0 ? null : new uint[(Length + BitsPerElement - 1) / BitsPerElement];
         }
 
         [CLSCompliant(false)]
-        public ReadOnlyMemory<uint> GetBuffer()
+        public Memory<uint> GetBuffer()
         {
             return _data.AsMemory();
+        }
+
+        public NetBitArray Slice(int start, int count)
+        {
+            NetBitArray array = new NetBitArray(count);
+            ReadOnlySpan<byte> srcBytes = MemoryMarshal.AsBytes(_data.AsSpan());
+            Span<byte> dstBytes = MemoryMarshal.AsBytes(array._data.AsSpan());
+            NetBitWriter.CopyBits(srcBytes, start, count, dstBytes, start);
+            return array;
         }
 
         /// <summary>
@@ -100,20 +99,20 @@ namespace Lidgren.Network
         {
             // TODO: check if it can be optimized with BitOperations
 
-            int lenMinusOne = _data.Length - 1;
+            if (_data == null)
+                return;
 
             uint firstBit = _data[0] & 1;
-            for (int i = 0; i < lenMinusOne; i++)
+
+            for (int i = 0; i < _data.Length - 1; i++)
                 _data[i] = ((_data[i] >> 1) & ~(1 << 31)) | _data[i + 1] << 31;
 
-            int lastIndex = Capacity - 1 - (BitsPerElement * lenMinusOne);
+            int lastIndex = Length - 1 - (BitsPerElement * (_data.Length - 1));
 
             // special handling of last int
-            uint last = _data[lenMinusOne];
+            ref uint last = ref _data[^1];
             last >>= 1;
             last |= firstBit << lastIndex;
-
-            _data[lenMinusOne] = last;
         }
 
         /// <summary>
@@ -121,6 +120,9 @@ namespace Lidgren.Network
         /// </summary>
         public int IndexOf(bool value)
         {
+            if (_data == null)
+                return -1;
+
             int flag = value ? 1 : 0;
             int offset = 0;
             uint data = _data[0];
@@ -145,9 +147,10 @@ namespace Lidgren.Network
         /// </summary>
         public bool Get(int bitIndex)
         {
-            LidgrenException.Assert(bitIndex >= 0 && bitIndex < Capacity);
+            if ((uint)bitIndex >= (uint)Length)
+                throw new IndexOutOfRangeException();
 
-            return (_data[bitIndex / BitsPerElement] & (1 << (bitIndex % BitsPerElement))) != 0;
+            return (_data![bitIndex / BitsPerElement] & (1 << (bitIndex % BitsPerElement))) != 0;
         }
 
         /// <summary>
@@ -155,21 +158,18 @@ namespace Lidgren.Network
         /// </summary>
         public void Set(int bitIndex, bool value)
         {
-            LidgrenException.Assert(bitIndex >= 0 && bitIndex < Capacity);
+            if ((uint)bitIndex >= (uint)Length)
+                throw new IndexOutOfRangeException();
 
             int index = bitIndex / BitsPerElement;
             uint mask = (uint)(1 << (bitIndex % BitsPerElement));
             if (value)
             {
-                //if ((_data[index] & (1 << (bitIndex % BitsPerData))) == 0)
-                //    PopCount++;
-                _data[index] |= mask;
+                _data![index] |= mask;
             }
             else
             {
-                //if ((_data[index] & (1 << (bitIndex % BitsPerData))) != 0)
-                //    PopCount--;
-                _data[index] &= ~mask;
+                _data![index] &= ~mask;
             }
         }
 
@@ -181,12 +181,10 @@ namespace Lidgren.Network
             if (value)
             {
                 _data.AsSpan().Fill(uint.MaxValue);
-                //PopCount = Capacity;
             }
             else
             {
                 _data.AsSpan().Clear();
-                //PopCount = 0;
             }
         }
 
@@ -199,16 +197,75 @@ namespace Lidgren.Network
         }
 
         /// <summary>
-        /// Returns a string that represents this bit vector.
+        /// Returns a string that represents this bit array.
         /// </summary>
         public override string ToString()
         {
-            var bdr = new StringBuilder(Capacity + 2);
+            var bdr = new StringBuilder(Length + 2);
             bdr.Append('[');
-            for (int i = 0; i < Capacity; i++)
-                bdr.Append(Get(Capacity - i - 1) ? '1' : '0');
+            for (int i = 0; i < Length; i++)
+                bdr.Append(Get(Length - i - 1) ? '1' : '0');
             bdr.Append(']');
             return bdr.ToString();
+        }
+
+        public bool Equals(NetBitArray other)
+        {
+            if (Length != other.Length)
+                return false;
+
+            Span<uint> d1 = _data;
+            Span<uint> d2 = other._data;
+
+            for (int i = 0; i < d1.Length - 1; i++)
+            {
+                if (d1[i] != d2[i])
+                    return false;
+            }
+
+            if (d1.Length > 0)
+            {
+                uint mask = ~(uint.MaxValue << (Length % BitsPerElement));
+                return (d1[^1] & mask) == (d2[^1] & mask);
+            }
+
+            return true;
+        }
+
+        public override bool Equals(object? obj)
+        {
+            return obj is NetBitArray other && Equals(other);
+        }
+
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                uint result = 17;
+                if (_data != null)
+                {
+                    for (int i = 0; i < _data.Length - 1; i++)
+                        result = result * 31 + _data[i];
+
+                    if (_data.Length > 0)
+                    {
+                        uint tmp = _data[^1];
+                        tmp &= ~(uint.MaxValue << (Length % BitsPerElement));
+                        result = result * 31 + tmp;
+                    }
+                }
+                return (int)result;
+            }
+        }
+
+        public static bool operator ==(NetBitArray left, NetBitArray right)
+        {
+            return left.Equals(right);
+        }
+
+        public static bool operator !=(NetBitArray left, NetBitArray right)
+        {
+            return !(left == right);
         }
     }
 }

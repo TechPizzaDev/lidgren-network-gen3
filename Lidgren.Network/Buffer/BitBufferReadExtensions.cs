@@ -1,10 +1,13 @@
 ﻿using System;
 using System.Buffers;
 using System.Buffers.Binary;
+using System.Collections;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Net;
+using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Unicode;
 
@@ -152,6 +155,30 @@ namespace Lidgren.Network
                 buffer.ReadBits(destination, remainingBits);
                 return remainingBits / 8;
             }
+        }
+
+        /// <summary>
+        /// Reads the bytes of a <typeparamref name="T"/> value from the buffer.
+        /// </summary>
+        public static bool TryRead<T>(this IBitBuffer buffer, out T value)
+            where T : unmanaged
+        {
+            Unsafe.SkipInit(out value);
+            Span<T> span = MemoryMarshal.CreateSpan(ref value, 1);
+            Span<byte> bytes = MemoryMarshal.AsBytes(span);
+            return buffer.TryRead(bytes);
+        }
+
+        /// <summary>
+        /// Reads the bytes of a <typeparamref name="T"/> value from the buffer.
+        /// </summary>
+        /// <exception cref="EndOfMessageException"></exception>
+        public static T Read<T>(this IBitBuffer buffer)
+            where T : unmanaged
+        {
+            if (!buffer.TryRead(out T value))
+                throw new EndOfMessageException();
+            return value;
         }
 
         #region Bool
@@ -801,7 +828,6 @@ namespace Lidgren.Network
         /// Byte-aligns the position, 
         /// decreasing work for subsequent operations if the position was not aligned.
         /// </summary>
-        [SuppressMessage("Design", "CA1062", Justification = "Performance")]
         public static void SkipPadBits(this IBitBuffer buffer)
         {
             buffer.BitPosition = NetBitWriter.BytesForBits(buffer.BitPosition) * 8;
@@ -810,7 +836,6 @@ namespace Lidgren.Network
         /// <summary>
         /// Pads the read position with the specified number of bits.
         /// </summary>
-        [SuppressMessage("Design", "CA1062", Justification = "Performance")]
         public static void SkipBits(this IBitBuffer buffer, int bitCount)
         {
             buffer.BitPosition += bitCount;
@@ -894,6 +919,45 @@ namespace Lidgren.Network
         public static NetBlockReader OpenBlockReader(this IBitBuffer buffer)
         {
             return new NetBlockReader(buffer);
+        }
+
+        /// <summary>
+        /// Decodes a <see cref="NetBitArray"/> from the buffer.
+        /// </summary>
+        public static NetBitArray ReadBitArray(this IBitBuffer buffer)
+        {
+            int bitLength = buffer.ReadVarInt32();
+            var array = new NetBitArray(bitLength);
+
+
+
+            return array;
+        }
+
+        /// <summary>
+        /// Decodes a <see cref="BigInteger"/> from the buffer.
+        /// </summary>
+        public static BigInteger ReadBigInt(this IBitBuffer buffer, bool isUnsigned)
+        {
+            int byteCount = buffer.ReadVarInt32();
+
+            Span<byte> tmp = stackalloc byte[4096];
+            byte[]? rented = null;
+            if (byteCount > tmp.Length)
+            {
+                rented = ArrayPool<byte>.Shared.Rent(byteCount);
+                tmp = rented;
+            }
+
+            try
+            {
+                return new BigInteger(tmp.Slice(0, byteCount), isUnsigned, isBigEndian: false);
+            }
+            finally
+            {
+                if (rented != null)
+                    ArrayPool<byte>.Shared.Return(rented);
+            }
         }
 
         #endregion

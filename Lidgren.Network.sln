@@ -7,6 +7,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Lidgren.Network", "Lidgren.
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "UnitTests", "UnitTests\UnitTests.csproj", "{DE385687-2EE2-42A7-AF55-0209C59B1785}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lidgren.Network.Tests", "Lidgren.Network.Tests\Lidgren.Network.Tests.csproj", "{5E39C6CD-B21D-45D2-9FB3-07C414C9C5D1}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -21,6 +23,10 @@ Global
 		{DE385687-2EE2-42A7-AF55-0209C59B1785}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{DE385687-2EE2-42A7-AF55-0209C59B1785}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{DE385687-2EE2-42A7-AF55-0209C59B1785}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5E39C6CD-B21D-45D2-9FB3-07C414C9C5D1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5E39C6CD-B21D-45D2-9FB3-07C414C9C5D1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5E39C6CD-B21D-45D2-9FB3-07C414C9C5D1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5E39C6CD-B21D-45D2-9FB3-07C414C9C5D1}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

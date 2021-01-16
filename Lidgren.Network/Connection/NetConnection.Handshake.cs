@@ -98,7 +98,7 @@ namespace Lidgren.Network
             // clear send queues
             for (int i = 0; i < _sendChannels.Length; i++)
             {
-                NetSenderChannel channel = _sendChannels[i];
+                NetSenderChannel? channel = _sendChannels[i];
                 if (channel != null)
                     channel.Reset();
             }
@@ -287,7 +287,8 @@ namespace Lidgren.Network
                     if (Status == NetConnectionStatus.ReceivedInitiation)
                     {
                         // Whee! Server full has already been checked
-                        if (ValidateHandshakeData(offset, payloadLength, out byte[]? hail, out int hailLength))
+                        var (success, hail, hailLength) = ValidateHandshakeData(offset, payloadLength);
+                        if (success)
                         {
                             if (hail != null)
                             {
@@ -409,7 +410,8 @@ namespace Lidgren.Network
             switch (Status)
             {
                 case NetConnectionStatus.InitiatedConnect:
-                    if (ValidateHandshakeData(offset, payloadLength, out byte[]? hail, out int hailLength))
+                    var (success, hail, hailLength) = ValidateHandshakeData(offset, payloadLength);
+                    if (success)
                     {
                         if (hail != null)
                         {
@@ -447,7 +449,7 @@ namespace Lidgren.Network
         }
 
         // TODO: consider outputting a NetIncomingMessage instead of byte[]
-        private bool ValidateHandshakeData(int offset, int payloadLength, out byte[]? hail, out int hailLength)
+        private (bool Success, byte[]? Hail, int HailLength) ValidateHandshakeData(int offset, int payloadLength)
         {
             // create temporary incoming message
             NetIncomingMessage msg = Peer.SetupReadHelperMessage(offset, payloadLength);
@@ -457,23 +459,22 @@ namespace Lidgren.Network
                 long remoteUniqueIdentifier = msg.ReadInt64();
                 InitializeRemoteTimeOffset(msg.ReadTimeSpan());
 
-                hailLength = payloadLength - (msg.BytePosition - offset);
+                byte[]? hail = null;
+                int hailLength = payloadLength - (msg.BytePosition - offset);
                 if (hailLength > 0)
                 {
                     hail = msg.StoragePool.Rent(hailLength);
                     msg.Read(hail.AsSpan(0, hailLength));
                 }
-                else
-                    hail = null;
 
                 if (remoteAppIdentifier != Peer.Configuration.AppIdentifier)
                 {
                     ExecuteDisconnect("Wrong application identifier!", true);
-                    return false;
+                    return (false, hail, hailLength);
                 }
 
                 RemoteUniqueIdentifier = remoteUniqueIdentifier;
-                return true;
+                return (true, hail, hailLength);
             }
             catch (Exception ex)
             {
@@ -481,9 +482,7 @@ namespace Lidgren.Network
                 ExecuteDisconnect("Handshake data validation failed", true);
                 Peer.LogWarning("ReadRemoteHandshakeData failed: " + ex.Message);
 
-                hail = null;
-                hailLength = 0;
-                return false;
+                return (false, null, 0);
             }
         }
 

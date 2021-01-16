@@ -7,10 +7,10 @@ namespace Lidgren.Network
     internal readonly struct ReceivedFragmentGroup
     {
         public byte[] Data { get; }
-        public NetBitVector ReceivedChunks { get; }
+        public NetBitArray ReceivedChunks { get; }
         //public TimeSpan LastReceived { get; set; } // TODO: discard after certain age
 
-        public ReceivedFragmentGroup(byte[] data, NetBitVector receivedChunks)
+        public ReceivedFragmentGroup(byte[] data, NetBitArray receivedChunks)
         {
             Data = data;
             ReceivedChunks = receivedChunks;
@@ -145,18 +145,20 @@ namespace Lidgren.Network
 
             if (!groups.TryGetValue(group, out ReceivedFragmentGroup info))
             {
-                info = new ReceivedFragmentGroup(new byte[totalBytes], new NetBitVector(totalChunkCount));
+                info = new ReceivedFragmentGroup(new byte[totalBytes], new NetBitArray(totalChunkCount));
                 groups.Add(group, info);
             }
 
-            info.ReceivedChunks[chunkNumber] = true;
-            //info.LastReceived = NetTime.Now;
+            NetBitArray receivedChunks = info.ReceivedChunks;
+            receivedChunks[chunkNumber] = true;
+
+            //info.LastReceived = NetTime.Now; // TODO
 
             // copy to data
             int offset = chunkNumber * chunkByteSize;
             message.GetBuffer().AsSpan()[headerOffset..message.ByteLength].CopyTo(info.Data.AsSpan(offset));
 
-            int chunkCount = info.ReceivedChunks.PopCount;
+            int chunkCount = receivedChunks.PopCount;
 
             //LogVerbose("Found fragment #" + chunkNumber + " in group " + group + " offset " + 
             //    offset + " of total bits " + totalBits + " (total chunks done " + cnt + ")");

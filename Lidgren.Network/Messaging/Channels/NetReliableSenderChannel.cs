@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace Lidgren.Network
 {
@@ -12,7 +14,7 @@ namespace Lidgren.Network
         private int _windowStart;
         private int _windowSize;
         private int _sendStart;
-        private NetBitVector _receivedAcks;
+        private NetBitArray _receivedAcks;
 
         internal NetStoredReliableMessage[] StoredMessages { get; }
 
@@ -25,7 +27,7 @@ namespace Lidgren.Network
             _windowSize = windowSize;
             _windowStart = 0;
             _sendStart = 0;
-            _receivedAcks = new NetBitVector(NetConstants.SequenceNumbers);
+            _receivedAcks = new NetBitArray(NetConstants.SequenceNumbers);
             StoredMessages = new NetStoredReliableMessage[_windowSize];
             ResendDelay = connection.ResendDelay;
         }
@@ -72,7 +74,7 @@ namespace Lidgren.Network
                 if (storedMessage.Message == null)
                     continue;
 
-                var t = storedMessage.LastSent;
+                TimeSpan t = storedMessage.LastSent;
                 if (t > TimeSpan.Zero && (now - t) > resendDelay)
                 {
                     // deduce sequence number
@@ -100,17 +102,16 @@ namespace Lidgren.Network
             }
 
             int num = GetAllowedSends();
-            if (num < 1)
-                return;
-
-            // queued sends
-            while (QueuedSends.Count > 0 && num > 0)
+            if (num > 0)
             {
-                if (QueuedSends.TryDequeue(out NetOutgoingMessage? om))
-                    ExecuteSend(now, om);
+                // queued sends
 
-                num--;
-                LidgrenException.Assert(num == GetAllowedSends());
+                while (num > 0 && QueuedSends.TryDequeue(out NetOutgoingMessage? message))
+                {
+                    ExecuteSend(now, message);
+                    num--;
+                    LidgrenException.Assert(num == GetAllowedSends());
+                }
             }
         }
 
@@ -119,10 +120,10 @@ namespace Lidgren.Network
             int seqNr = _sendStart;
             _sendStart = (_sendStart + 1) % NetConstants.SequenceNumbers;
 
-            _connection.QueueSendMessage(message, seqNr);
-
             ref NetStoredReliableMessage storedMessage = ref StoredMessages[seqNr % _windowSize];
             LidgrenException.Assert(storedMessage.Message == null);
+
+            _connection.QueueSendMessage(message, seqNr);
 
             storedMessage.SequenceNumber = seqNr;
             storedMessage.NumSent++;
@@ -145,8 +146,10 @@ namespace Lidgren.Network
             {
                 if (Interlocked.Decrement(ref storedMessage.Message._recyclingCount) <= 0)
                     _connection.Peer.Recycle(storedMessage.Message);
+                else
+                    Console.WriteLine();
             }
-            storedMessage = default;
+            storedMessage.Reset();
         }
 
         // remoteWindowStart is remote expected sequence number; everything below this has arrived properly
@@ -206,7 +209,7 @@ namespace Lidgren.Network
                 if (!_receivedAcks[seqNr])
                     _receivedAcks[seqNr] = true;
                 //else
-                    // we've already destored/been acked for this message
+                // we've already destored/been acked for this message
             }
             else if (sendRelate > 0)
             {

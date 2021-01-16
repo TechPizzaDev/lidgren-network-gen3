@@ -1,24 +1,4 @@
-﻿/* Copyright (c) 2010 Michael Lidgren
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software
-and associated documentation files (the "Software"), to deal in the Software without
-restriction, including without limitation the rights to use, copy, modify, merge, publish,
-distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom
-the Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or
-substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
-INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
-PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
-LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
-USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-*/
-
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
@@ -46,10 +26,15 @@ namespace Lidgren.Network
         //Avoids allocation on mapping to IPv6
         private IPEndPoint _targetCopy = new IPEndPoint(IPAddress.Any, 0);
 
-        internal void SendPacket(int byteCount, IPEndPoint target, int numMessages, out bool connectionReset)
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="byteCount"></param>
+        /// <param name="target"></param>
+        /// <param name="numMessages"></param>
+        /// <returns>Whether the connection was reset.</returns>
+        internal bool SendPacket(int byteCount, IPEndPoint target, int numMessages)
         {
-            connectionReset = false;
-
             // simulate loss
             float loss = Configuration._loss;
             if (loss > 0f)
@@ -57,49 +42,50 @@ namespace Lidgren.Network
                 if (MWCRandom.Global.NextSingle() < loss)
                 {
                     LogVerbose("Sending packet " + byteCount + " bytes - SIMULATED LOST!");
-                    return; // packet "lost"
+                    return false; // packet "lost"
                 }
             }
 
             Statistics.PacketSent(byteCount, numMessages);
 
             // simulate latency
-            var m = Configuration._minimumOneWayLatency;
-            var r = Configuration._randomOneWayLatency;
+            TimeSpan m = Configuration._minimumOneWayLatency;
+            TimeSpan r = Configuration._randomOneWayLatency;
             if (m == TimeSpan.Zero && r == TimeSpan.Zero)
             {
                 // no latency simulation
                 //LogVerbose("Sending packet " + numBytes + " bytes");
-                bool wasSent = ActuallySendPacket(_sendBuffer, byteCount, target, out connectionReset);
+                var (wasSent, connectionReset) = ActuallySendPacket(_sendBuffer, byteCount, target);
                 // TODO: handle 'wasSent == false' better?
 
                 if ((!wasSent && !connectionReset) ||
                     Configuration._duplicates > 0f && MWCRandom.Global.NextSingle() < Configuration._duplicates)
                 {
-                    ActuallySendPacket(_sendBuffer, byteCount, target, out connectionReset); // send it again!
+                    (wasSent, connectionReset) = ActuallySendPacket(_sendBuffer, byteCount, target); // send it again!
                 }
-                return;
+                return connectionReset;
             }
 
             int num = 1;
             if (Configuration._duplicates > 0f && MWCRandom.Global.NextSingle() < Configuration._duplicates)
                 num++;
 
-            var now = NetTime.Now;
+            TimeSpan now = NetTime.Now;
             for (int i = 0; i < num; i++)
             {
-                var delay = Configuration._minimumOneWayLatency +
+                TimeSpan delay = Configuration._minimumOneWayLatency +
                     (MWCRandom.Global.NextSingle() * Configuration._randomOneWayLatency);
 
-                var data = new byte[byteCount]; // TODO: ArrayPool
+                byte[] data = new byte[byteCount]; // TODO: ArrayPool?
                 Buffer.BlockCopy(_sendBuffer, 0, data, 0, byteCount);
 
                 // Enqueue delayed packet
-                var p = new DelayedPacket(data, now + delay, target);
+                DelayedPacket p = new(data, now + delay, target);
                 DelayedPackets.Add(p);
             }
 
             // LogVerbose("Sending packet " + numBytes + " bytes - delayed " + NetTime.ToReadable(delay));
+            return false;
         }
 
         private void SendDelayedPackets()
@@ -107,15 +93,15 @@ namespace Lidgren.Network
             if (DelayedPackets.Count == 0)
                 return;
 
-            var now = NetTime.Now;
+            TimeSpan now = NetTime.Now;
 
             // reverse-for so elements can be removed without breaking loop
             for (int i = DelayedPackets.Count; i-- > 0;)
             {
-                var p = DelayedPackets[i];
+                DelayedPacket p = DelayedPackets[i];
                 if (now > p.DelayedUntil)
                 {
-                    ActuallySendPacket(p.Data, p.Data.Length, p.Target, out _);
+                    ActuallySendPacket(p.Data, p.Data.Length, p.Target);
                     DelayedPackets.RemoveAt(i);
                 }
             }
@@ -127,7 +113,7 @@ namespace Lidgren.Network
             {
                 try
                 {
-                    ActuallySendPacket(p.Data, p.Data.Length, p.Target, out bool _);
+                    ActuallySendPacket(p.Data, p.Data.Length, p.Target);
                 }
                 catch (Exception ex)
                 {
@@ -139,12 +125,11 @@ namespace Lidgren.Network
 
         // TODO: replace byte[] with Span in the future (held back by Socket.SendTo)
         // https://github.com/dotnet/runtime/issues/33418
-        internal bool ActuallySendPacket(byte[] data, int numBytes, IPEndPoint target, out bool connectionReset)
+        internal (bool Sent, bool ConnectionReset) ActuallySendPacket(byte[] data, int numBytes, IPEndPoint target)
         {
             if (Socket == null)
                 throw new InvalidOperationException("No socket bound.");
 
-            connectionReset = false;
             bool broadcasting = false;
 
             try
@@ -178,9 +163,10 @@ namespace Lidgren.Network
 
                 int bytesSent = Socket.SendTo(data, 0, numBytes, SocketFlags.None, _targetCopy);
                 if (numBytes != bytesSent)
+                {
                     LogWarning(
                         "Failed to send the full " + numBytes + "; only " + bytesSent + " bytes sent in packet!");
-
+                }
                 //LogDebug("Sent " + numBytes + " bytes");
             }
             catch (SocketException sx)
@@ -191,12 +177,11 @@ namespace Lidgren.Network
                         // send buffer full?
                         LogWarning(
                             "Socket threw exception; would block - send buffer full? Increase in NetPeerConfiguration");
-                        return false;
+                        return (false, false);
 
                     case SocketError.ConnectionReset:
                         // connection reset by peer, aka connection forcibly closed aka "ICMP port unreachable" 
-                        connectionReset = true;
-                        return false;
+                        return (false, true);
 
                     default:
                         LogError("Failed to send packet: " + sx);
@@ -212,7 +197,7 @@ namespace Lidgren.Network
                 if (broadcasting)
                     Socket.EnableBroadcast = false;
             }
-            return true;
+            return (true, false);
         }
 
         internal bool SendMTUPacket(int numBytes, IPEndPoint target)

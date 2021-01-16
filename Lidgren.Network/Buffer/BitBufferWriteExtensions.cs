@@ -1,7 +1,10 @@
 ﻿using System;
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Net;
+using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace Lidgren.Network
 {
@@ -539,6 +542,76 @@ namespace Lidgren.Network
             buffer.Write(sourceBuffer.GetBuffer(), 0, sourceBuffer.BitLength);
         }
 
+        /// <summary>
+        /// Encodes a <see cref="NetBitArray"/> to this buffer.
+        /// </summary>
+        public static void Write(this IBitBuffer buffer, NetBitArray bitArray)
+        {
+            buffer.WriteVar(bitArray.Length);
+
+            ReadOnlySpan<uint> values = bitArray.GetBuffer().Span;
+            int bitsLeft = bitArray.Length % NetBitArray.BitsPerElement;
+            if (bitsLeft == 0)
+            {
+                for (int i = 0; i < values.Length; i++)
+                    buffer.Write(values[i]);
+            }
+            else
+            {
+                for (int i = 0; i < values.Length - 1; i++)
+                    buffer.Write(values[i]);
+
+                uint last = values[^1];
+                buffer.Write(last, bitsLeft);
+            }
+        }
+
+        /// <summary>
+        /// Writes the bytes of a <typeparamref name="T"/> value to this buffer.
+        /// </summary>
+        public static void Write<T>(this IBitBuffer buffer, in T value)
+            where T : unmanaged
+        {
+            ReadOnlySpan<T> span = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(value), 1);
+            ReadOnlySpan<byte> bytes = MemoryMarshal.AsBytes(span);
+            buffer.Write(bytes);
+        }
+
+        /// <summary>
+        /// Encodes a <see cref="BigInteger"/> to this buffer.
+        /// </summary>
+        public static void Write(this IBitBuffer buffer, BigInteger bigInt, bool isUnsigned)
+        {
+            int byteCount = bigInt.GetByteCount(isUnsigned);
+            Span<byte> tmp = stackalloc byte[4096];
+            byte[]? rented = null;
+            if (byteCount > tmp.Length)
+            {
+                rented = ArrayPool<byte>.Shared.Rent(byteCount);
+                tmp = rented;
+            }
+
+            try
+            {
+                if (!bigInt.TryWriteBytes(tmp, out int written, isUnsigned, isBigEndian: false))
+                    throw new Exception();
+
+                buffer.WriteVar(written);
+                buffer.Write(tmp.Slice(0, written));
+            }
+            finally
+            {
+                if (rented != null)
+                    ArrayPool<byte>.Shared.Return(rented);
+            }
+        }
+
+        /// <summary>
+        /// Encodes an enum to this buffer.
+        /// </summary>
+        /// <typeparam name="TEnum">The enum type. The base type determines encoding method.</typeparam>
+        /// <param name="buffer">The destination buffer.</param>
+        /// <param name="value">The value to encode.</param>
         public static void Write<TEnum>(this IBitBuffer buffer, TEnum value)
             where TEnum : unmanaged, Enum
         {

@@ -45,7 +45,7 @@ namespace Lidgren.Network
 
         internal void InitializePing()
         {
-            var now = NetTime.Now;
+            TimeSpan now = NetTime.Now;
 
             // randomize ping sent time (0.25 - 1.0 x ping interval)
             _sentPingTime = now;
@@ -72,7 +72,7 @@ namespace Lidgren.Network
 
             int length = 0;
             _pingPongBuffer.Encode(Peer._sendBuffer, ref length, 0);
-            Peer.SendPacket(length, RemoteEndPoint, 1, out _);
+            Peer.SendPacket(length, RemoteEndPoint, 1);
         }
 
         internal void SendPong(byte pongNumber)
@@ -89,7 +89,7 @@ namespace Lidgren.Network
 
             int length = 0;
             _pingPongBuffer.Encode(Peer._sendBuffer, ref length, 0);
-            Peer.SendPacket(length, RemoteEndPoint, 1, out _);
+            Peer.SendPacket(length, RemoteEndPoint, 1);
         }
 
         internal void ReceivedPong(TimeSpan now, byte pongNumber, TimeSpan remoteSendTime)

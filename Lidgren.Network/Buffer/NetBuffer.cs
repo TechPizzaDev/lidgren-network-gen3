@@ -70,7 +70,7 @@ namespace Lidgren.Network
                     if (_isDisposed)
                         throw new ObjectDisposedException(GetType().FullName);
 
-                    var newBuffer = StoragePool.Rent(value);
+                    byte[] newBuffer = StoragePool.Rent(value);
                     _buffer.AsMemory(0, ByteLength).CopyTo(newBuffer);
                     SetBuffer(newBuffer);
                 }
@@ -110,7 +110,9 @@ namespace Lidgren.Network
         public void SetBuffer(byte[] buffer, bool isRecyclable = true)
         {
             if (_recyclableBuffer)
+            {
                 StoragePool.Return(_buffer);
+            }
 
             _buffer = buffer ?? throw new ArgumentNullException(nameof(buffer));
             _recyclableBuffer = isRecyclable;

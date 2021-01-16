@@ -23,10 +23,10 @@ namespace Lidgren.Network
 
         private object MessageReceivedEventInitMutex { get; } = new object();
 
-        private ConcurrentDictionary<IPEndPoint, NetConnection> ConnectionLookup { get; } = 
+        private ConcurrentDictionary<IPEndPoint, NetConnection> ConnectionLookup { get; } =
             new ConcurrentDictionary<IPEndPoint, NetConnection>();
 
-        internal List<NetConnection> Connections { get; } = 
+        internal List<NetConnection> Connections { get; } =
             new List<NetConnection>();
 
         public NetMessageScheduler DefaultScheduler { get; } =
@@ -216,14 +216,15 @@ namespace Lidgren.Network
             if (TryReadMessage(out message))
                 return true;
 
-            var resetEvent = MessageReceivedEvent;
-            if(timeout == Timeout.InfiniteTimeSpan)
+            AutoResetEvent resetEvent = MessageReceivedEvent;
+            if (timeout == Timeout.InfiniteTimeSpan)
             {
-                WaitLoop:
-                resetEvent.WaitOne();
-                if (TryReadMessage(out message))
-                    return true;
-                goto WaitLoop;
+                do
+                {
+                    resetEvent.WaitOne();
+                }
+                while (!TryReadMessage(out message));
+                return true;
             }
 
             TryWait:
@@ -241,7 +242,7 @@ namespace Lidgren.Network
             // The user is most likely reading messages without checking the reset event.
 
             long elapsedTicks = Stopwatch.GetTimestamp() - startTicks;
-            timeout -= TimeSpan.FromTicks(elapsedTicks);
+            timeout -= TimeSpan.FromSeconds(elapsedTicks * NetTime.InverseFrequency);
 
             // Go back and wait again if we have leftover time.
             if (timeout.Ticks > 0)
@@ -286,7 +287,7 @@ namespace Lidgren.Network
 
             int length = 0;
             message.Encode(_sendBuffer, ref length, 0);
-            SendPacket(length, recipient, 1, out _);
+            SendPacket(length, recipient, 1);
         }
 
         /// <summary>
@@ -296,7 +297,7 @@ namespace Lidgren.Network
         {
             // wrong thread might crash with network thread
             Array.Copy(buffer, offset, _sendBuffer, 0, length);
-            SendPacket(length, destination, 1, out _);
+            SendPacket(length, destination, 1);
         }
 
         /// <summary>

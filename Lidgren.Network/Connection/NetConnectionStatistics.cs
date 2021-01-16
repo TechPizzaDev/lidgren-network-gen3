@@ -1,23 +1,4 @@
-﻿/* Copyright (c) 2010 Michael Lidgren
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software
-and associated documentation files (the "Software"), to deal in the Software without
-restriction, including without limitation the rights to use, copy, modify, merge, publish,
-distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom
-the Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or
-substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
-INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
-PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
-LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
-USE OR OTHER DEALINGS IN THE SOFTWARE.
-*/
-
-using System.Text;
+﻿using System.Text;
 
 namespace Lidgren.Network
 {
@@ -94,7 +75,7 @@ namespace Lidgren.Network
             get
             {
                 int unsent = 0;
-                foreach (NetSenderChannel sendChan in _connection._sendChannels)
+                foreach (NetSenderChannel? sendChan in _connection._sendChannels)
                 {
                     if (sendChan != null)
                         unsent += sendChan.QueuedSends.Count;
@@ -111,13 +92,15 @@ namespace Lidgren.Network
             get
             {
                 int stored = 0;
-                foreach (NetSenderChannel sendChan in _connection._sendChannels)
+                foreach (NetSenderChannel? sendChan in _connection._sendChannels)
                 {
                     if (sendChan is NetReliableSenderChannel relSendChan)
                     {
-                        for (int i = 0; i < relSendChan.StoredMessages.Length; i++)
-                            if (relSendChan.StoredMessages[i].Message != null)
+                        foreach (NetStoredReliableMessage msg in relSendChan.StoredMessages)
+                        {
+                            if (msg.Message != null)
                                 stored++;
+                        }
                     }
                 }
                 return stored;
@@ -132,14 +115,16 @@ namespace Lidgren.Network
             get
             {
                 int withheld = 0;
-                foreach (NetReceiverChannel recChan in _connection._receiveChannels)
+                foreach (NetReceiverChannel? recChan in _connection._receiveChannels)
                 {
-                    if (!(recChan is NetReliableOrderedReceiver relRecChan))
-                        continue;
-
-                    foreach (var msg in relRecChan.WithheldMessages)
-                        if (msg != null)
-                            withheld++;
+                    if (recChan is NetReliableOrderedReceiver relRecChan)
+                    {
+                        foreach (NetIncomingMessage? msg in relRecChan.WithheldMessages)
+                        {
+                            if (msg != null)
+                                withheld++;
+                        }
+                    }
                 }
                 return withheld;
             }
@@ -181,23 +166,23 @@ namespace Lidgren.Network
 
             var sb = new StringBuilder();
 
-            sb.AppendFormatLine("Average roundtrip time: {0}", NetTime.ToReadable(_connection.AverageRoundtripTime));
-            sb.AppendFormatLine("Current MTU: {0}", _connection.CurrentMTU);
+            sb.AppendFormat("Average roundtrip time: {0}", NetTime.ToReadable(_connection.AverageRoundtripTime)).AppendLine();
+            sb.AppendFormat("Current MTU: {0}", _connection.CurrentMTU).AppendLine();
 
-            sb.AppendFormatLine(
+            sb.AppendFormat(
                 "Sent {0} bytes in {1} messages in {2} packets",
-                _sentBytes, _sentMessages, _sentPackets);
+                _sentBytes, _sentMessages, _sentPackets).AppendLine();
 
-            sb.AppendFormatLine(
+            sb.AppendFormat(
                 "Received {0} bytes in {1} messages ({2} fragments) in {3} packets",
-                _receivedBytes, _receivedMessages, _receivedFragments, _receivedPackets);
+                _receivedBytes, _receivedMessages, _receivedFragments, _receivedPackets).AppendLine();
 
             sb.AppendLine();
-            sb.AppendFormatLine("Queued: {0}", QueuedMessages);
-            sb.AppendFormatLine("Stored: {0}", StoredMessages);
-            sb.AppendFormatLine("Witheld: {0}", WithheldMessages);
-            sb.AppendFormatLine("Resent (by delay): {0}", _resentMessagesDueToDelay);
-            sb.AppendFormatLine("Resent (by hole): {0}", _resentMessagesDueToHole);
+            sb.AppendFormat("Queued: {0}", QueuedMessages).AppendLine();
+            sb.AppendFormat("Stored: {0}", StoredMessages).AppendLine();
+            sb.AppendFormat("Witheld: {0}", WithheldMessages).AppendLine();
+            sb.AppendFormat("Resent (by delay): {0}", _resentMessagesDueToDelay).AppendLine();
+            sb.AppendFormat("Resent (by hole): {0}", _resentMessagesDueToHole).AppendLine();
 
             return sb.ToString();
         }

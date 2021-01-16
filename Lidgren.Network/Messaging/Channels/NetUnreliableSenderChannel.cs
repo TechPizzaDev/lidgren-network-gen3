@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace Lidgren.Network
 {
@@ -12,7 +13,7 @@ namespace Lidgren.Network
         private int _windowStart;
         private int _windowSize;
         private int _sendStart;
-        private NetBitVector _receivedAcks;
+        private NetBitArray _receivedAcks;
 
         public override int WindowSize => _windowSize;
 
@@ -22,7 +23,7 @@ namespace Lidgren.Network
             _windowSize = windowSize;
             _windowStart = 0;
             _sendStart = 0;
-            _receivedAcks = new NetBitVector(NetConstants.SequenceNumbers);
+            _receivedAcks = new NetBitArray(NetConstants.SequenceNumbers);
         }
 
         public override int GetAllowedSends()
@@ -45,7 +46,7 @@ namespace Lidgren.Network
             int queueLen = QueuedSends.Count + 1;
             int left = GetAllowedSends();
             if (queueLen > left ||
-                (message.ByteLength > _connection.CurrentMTU && 
+                (message.ByteLength > _connection.CurrentMTU &&
                 _connection._peerConfiguration.UnreliableSizeBehaviour == NetUnreliableSizeBehaviour.DropAboveMTU))
             {
                 _connection.Peer.Recycle(message);
@@ -60,15 +61,15 @@ namespace Lidgren.Network
         public override void SendQueuedMessages(TimeSpan now)
         {
             int num = GetAllowedSends();
-            if (num < 1)
-                return;
-
-            // queued sends
-            while (QueuedSends.Count > 0 && num > 0)
+            if (num > 0)
             {
-                if (QueuedSends.TryDequeue(out NetOutgoingMessage? om))
-                    ExecuteSend(om);
-                num--;
+                // queued sends
+                while (QueuedSends.Count > 0 && num > 0)
+                {
+                    if (QueuedSends.TryDequeue(out NetOutgoingMessage? om))
+                        ExecuteSend(om);
+                    num--;
+                }
             }
         }
 
@@ -84,8 +85,6 @@ namespace Lidgren.Network
             Interlocked.Decrement(ref message._recyclingCount);
             if (message._recyclingCount <= 0)
                 _connection.Peer.Recycle(message);
-
-            return;
         }
 
         // remoteWindowStart is remote expected sequence number; everything below this has arrived properly
@@ -110,7 +109,6 @@ namespace Lidgren.Network
 
                 _receivedAcks[_windowStart] = false;
                 _windowStart = (_windowStart + 1) % NetConstants.SequenceNumbers;
-
                 return;
             }
 

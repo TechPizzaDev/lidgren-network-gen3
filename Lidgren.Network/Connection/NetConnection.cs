@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Net;
 using System.Diagnostics;
-using System.Collections.Generic;
+using System.Threading.Tasks;
 
 namespace Lidgren.Network
 {
@@ -25,8 +25,8 @@ namespace Lidgren.Network
         private int _sendBufferWritePtr;
         private int _sendBufferNumMessages;
         internal NetPeerConfiguration _peerConfiguration;
-        internal NetSenderChannel[] _sendChannels;
-        internal NetReceiverChannel[] _receiveChannels;
+        internal NetSenderChannel?[] _sendChannels;
+        internal NetReceiverChannel?[] _receiveChannels;
         internal NetStream?[] _openStreams;
         internal NetQueue<(NetMessageType Type, int SequenceNumber)> _queuedOutgoingAcks;
         internal NetQueue<(NetMessageType Type, int SequenceNumber)> _queuedIncomingAcks;
@@ -219,7 +219,7 @@ namespace Lidgren.Network
                     {
                         // send packet and go for another round of acks
                         LidgrenException.Assert(_sendBufferWritePtr > 0 && _sendBufferNumMessages > 0);
-                        Peer.SendPacket(_sendBufferWritePtr, RemoteEndPoint, _sendBufferNumMessages, out _);
+                        Peer.SendPacket(_sendBufferWritePtr, RemoteEndPoint, _sendBufferNumMessages);
                         Statistics.PacketSent(_sendBufferWritePtr, 1);
                         _sendBufferWritePtr = 0;
                         _sendBufferNumMessages = 0;
@@ -232,7 +232,7 @@ namespace Lidgren.Network
                 while (_queuedIncomingAcks.TryDequeue(out var incAck))
                 {
                     //m_peer.LogVerbose("Received ack for " + acktp + "#" + seqNr);
-                    NetSenderChannel channel = _sendChannels[(int)incAck.Type - 1];
+                    NetSenderChannel? channel = _sendChannels[(int)incAck.Type - 1];
 
                     // If we haven't sent a message on this channel there is no reason to ack it
                     if (channel == null)
@@ -248,11 +248,12 @@ namespace Lidgren.Network
             if (Peer._executeFlushSendQueue)
             {
                 // Reverse order so reliable messages are sent first
-                for (int i = _sendChannels.Length - 1; i >= 0; i--)
+                for (int i = _sendChannels.Length; i-- > 0;)
                 {
-                    var channel = _sendChannels[i];
+                    NetSenderChannel? channel = _sendChannels[i];
                     LidgrenException.Assert(_sendBufferWritePtr < 1 || _sendBufferNumMessages > 0);
-                    channel?.SendQueuedMessages(now);
+                    if (channel != null)
+                        channel.SendQueuedMessages(now);
                     LidgrenException.Assert(_sendBufferWritePtr < 1 || _sendBufferNumMessages > 0);
                 }
             }
@@ -262,9 +263,8 @@ namespace Lidgren.Network
             //
             if (_sendBufferWritePtr > 0)
             {
-                Peer.AssertIsOnLibraryThread();
                 LidgrenException.Assert(_sendBufferWritePtr > 0 && _sendBufferNumMessages > 0);
-                Peer.SendPacket(_sendBufferWritePtr, RemoteEndPoint, _sendBufferNumMessages, out _);
+                Peer.SendPacket(_sendBufferWritePtr, RemoteEndPoint, _sendBufferNumMessages);
                 Statistics.PacketSent(_sendBufferWritePtr, _sendBufferNumMessages);
                 _sendBufferWritePtr = 0;
                 _sendBufferNumMessages = 0;
@@ -285,7 +285,7 @@ namespace Lidgren.Network
                 if (_sendBufferWritePtr > 0 && _sendBufferNumMessages > 0)
                 {
                     // previous message in buffer; send these first
-                    Peer.SendPacket(_sendBufferWritePtr, RemoteEndPoint, _sendBufferNumMessages, out _);
+                    Peer.SendPacket(_sendBufferWritePtr, RemoteEndPoint, _sendBufferNumMessages);
                     Statistics.PacketSent(_sendBufferWritePtr, _sendBufferNumMessages);
                     _sendBufferWritePtr = 0;
                     _sendBufferNumMessages = 0;
@@ -299,7 +299,7 @@ namespace Lidgren.Network
             if (_sendBufferWritePtr > CurrentMTU)
             {
                 // send immediately; we're already over MTU
-                Peer.SendPacket(_sendBufferWritePtr, RemoteEndPoint, _sendBufferNumMessages, out _);
+                Peer.SendPacket(_sendBufferWritePtr, RemoteEndPoint, _sendBufferNumMessages);
                 Statistics.PacketSent(_sendBufferWritePtr, _sendBufferNumMessages);
                 _sendBufferWritePtr = 0;
                 _sendBufferNumMessages = 0;
@@ -329,7 +329,7 @@ namespace Lidgren.Network
 
             // TODO: do we need to make this more thread safe?
             int channelSlot = (int)method - 1 + sequenceChannel;
-            NetSenderChannel chan = _sendChannels[channelSlot];
+            NetSenderChannel? chan = _sendChannels[channelSlot];
             if (chan == null)
                 chan = CreateSenderChannel(type);
 
@@ -338,7 +338,7 @@ namespace Lidgren.Network
                 message.GetEncodedSize() > CurrentMTU)
                 Peer.ThrowOrLog("Reliable message too large! Fragmentation failure?");
 
-            var sendResult = chan.Enqueue(message);
+            NetSendResult sendResult = chan.Enqueue(message);
             //if (sendResult == NetSendResult.Sent && !_peerConfiguration.m_autoFlushSendQueue)
             //	sendResult = NetSendResult.Queued; // queued since we're not autoflushing
             return sendResult;
@@ -353,31 +353,28 @@ namespace Lidgren.Network
                 int sequenceChannel = (int)type - (int)method;
                 int channelSlot = (int)method - 1 + sequenceChannel;
 
-                if (_sendChannels[channelSlot] != null)
+                NetSenderChannel? channel = _sendChannels[channelSlot];
+                if (channel != null)
                 {
                     // we were pre-empted by another call to this method
-                    return _sendChannels[channelSlot];
+                    return channel;
                 }
                 else
                 {
-                    NetSenderChannel channel;
-                    switch (method)
+                    channel = method switch
                     {
-                        case NetDeliveryMethod.Unreliable:
-                        case NetDeliveryMethod.UnreliableSequenced:
-                            channel = new NetUnreliableSenderChannel(this, NetUtility.GetWindowSize(method));
-                            break;
+                        NetDeliveryMethod.Unreliable or
+                        NetDeliveryMethod.UnreliableSequenced =>
+                        new NetUnreliableSenderChannel(this, NetUtility.GetWindowSize(method)),
 
-                        case NetDeliveryMethod.ReliableUnordered:
-                        case NetDeliveryMethod.ReliableSequenced:
-                        case NetDeliveryMethod.ReliableOrdered:
-                        case NetDeliveryMethod.Stream:
-                            channel = new NetReliableSenderChannel(this, NetUtility.GetWindowSize(method));
-                            break;
+                        NetDeliveryMethod.ReliableUnordered or
+                        NetDeliveryMethod.ReliableSequenced or
+                        NetDeliveryMethod.ReliableOrdered or
+                        NetDeliveryMethod.Stream =>
+                        new NetReliableSenderChannel(this, NetUtility.GetWindowSize(method)),
 
-                        default:
-                            throw new ArgumentOutOfRangeException(nameof(type));
-                    }
+                        _ => throw new ArgumentOutOfRangeException(nameof(type)),
+                    };
                     _sendChannels[channelSlot] = channel;
                     return channel;
                 }
@@ -389,7 +386,7 @@ namespace Lidgren.Network
         {
             Peer.AssertIsOnLibraryThread();
 
-            var now = NetTime.Now;
+            TimeSpan now = NetTime.Now;
 
             switch (type)
             {
@@ -479,7 +476,7 @@ namespace Lidgren.Network
             NetMessageType type = msg._baseMessageType;
 
             int channelSlot = (int)type - 1;
-            NetReceiverChannel channel = _receiveChannels[channelSlot];
+            NetReceiverChannel? channel = _receiveChannels[channelSlot];
             if (channel == null)
                 channel = CreateReceiverChannel(type);
 

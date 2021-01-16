@@ -5,13 +5,13 @@ namespace Lidgren.Network
 	{
 		private int _windowStart;
 		private int _windowSize;
-		private NetBitVector _earlyReceived;
+		private NetBitArray _earlyReceived;
 
 		public NetReliableUnorderedReceiver(NetConnection connection, int windowSize)
 			: base(connection)
 		{
 			_windowSize = windowSize;
-			_earlyReceived = new NetBitVector(windowSize);
+			_earlyReceived = new NetBitArray(windowSize);
 		}
 
 		private void AdvanceWindow()

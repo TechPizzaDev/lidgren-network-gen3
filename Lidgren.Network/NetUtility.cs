@@ -1,32 +1,11 @@
-﻿/* Copyright (c) 2010 Michael Lidgren
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software
-and associated documentation files (the "Software"), to deal in the Software without
-restriction, including without limitation the rights to use, copy, modify, merge, publish,
-distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom
-the Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or
-substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
-INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
-PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
-LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
-USE OR OTHER DEALINGS IN THE SOFTWARE.
-*/
-
-using System;
+﻿using System;
 using System.Net;
 using System.Net.Sockets;
 using System.Buffers.Binary;
 using System.Globalization;
-using System.Security.Cryptography;
 using System.Diagnostics;
 using System.Net.NetworkInformation;
 using System.Diagnostics.CodeAnalysis;
-using System.Runtime.CompilerServices;
 
 namespace Lidgren.Network
 {
@@ -37,13 +16,6 @@ namespace Lidgren.Network
     /// </summary>
     public static partial class NetUtility
     {
-        private static readonly double _inverseFrequency = 1.0 / Stopwatch.Frequency;
-        private static readonly long _timeInitialized = Stopwatch.GetTimestamp();
-
-        internal static SHA256 Sha256 { get; } = SHA256.Create();
-
-        public static double Now => (Stopwatch.GetTimestamp() - _timeInitialized) * _inverseFrequency;
-
         /// <summary>
         /// Resolve endpoint callback
         /// </summary>
@@ -218,7 +190,7 @@ namespace Lidgren.Network
 
             host = host.Trim();
 
-            if (IPAddress.TryParse(host, out IPAddress ipAddress))
+            if (IPAddress.TryParse(host, out IPAddress? ipAddress))
             {
                 if (ipAddress.AddressFamily == AddressFamily.InterNetwork ||
                     ipAddress.AddressFamily == AddressFamily.InterNetworkV6)
@@ -301,7 +273,7 @@ namespace Lidgren.Network
 
             host = host.Trim();
 
-            if (IPAddress.TryParse(host, out IPAddress ipAddress))
+            if (IPAddress.TryParse(host, out IPAddress? ipAddress))
             {
                 if (ipAddress.AddressFamily == AddressFamily.InterNetwork ||
                     ipAddress.AddressFamily == AddressFamily.InterNetworkV6)

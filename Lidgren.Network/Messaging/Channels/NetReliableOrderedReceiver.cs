@@ -5,15 +5,15 @@ namespace Lidgren.Network
 	{
 		private int _windowStart;
 		private int _windowSize;
-		private NetBitVector _earlyReceived;
+		private NetBitArray _earlyReceived;
 
-		internal NetIncomingMessage[] WithheldMessages { get; private set; }
+		internal NetIncomingMessage?[] WithheldMessages { get; private set; }
 
 		public NetReliableOrderedReceiver(NetConnection connection, int windowSize)
 			: base(connection)
 		{
 			_windowSize = windowSize;
-			_earlyReceived = new NetBitVector(windowSize);
+			_earlyReceived = new NetBitArray(windowSize);
 			WithheldMessages = new NetIncomingMessage[windowSize];
 		}
 
@@ -47,7 +47,7 @@ namespace Lidgren.Network
 
 				while (_earlyReceived[nextSeqNr % _windowSize])
 				{
-					message = WithheldMessages[nextSeqNr % _windowSize];
+					message = WithheldMessages[nextSeqNr % _windowSize]!;
 					LidgrenException.Assert(message != null);
 
 					// remove it from withheld messages

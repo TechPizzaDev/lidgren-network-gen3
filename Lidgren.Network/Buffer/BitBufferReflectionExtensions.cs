@@ -44,6 +44,8 @@ namespace Lidgren.Network
                     }
                 }
             }
+            if (EnumReadMethod == null)
+                throw new InvalidOperationException();
 
             var outMethods = typeof(BitBufferWriteExtensions).GetMethods(BindingFlags.Static | BindingFlags.Public);
             foreach (MethodInfo method in outMethods)
@@ -63,6 +65,8 @@ namespace Lidgren.Network
                     }
                 }
             }
+            if (EnumWriteMethod == null)
+                throw new InvalidOperationException();
         }
 
         /// <summary>

@@ -12,6 +12,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Buffers;
 using System.Runtime.CompilerServices;
+using System.Net.Sockets;
 
 namespace UnitTests
 {
@@ -36,12 +37,12 @@ namespace UnitTests
 
             NetQueueTests.Run();
 
-            BitVectorTests.Run();
+            BitArrayTests.Run();
 
             var config = new NetPeerConfiguration("unittests");
             config.EnableMessageType(NetIncomingMessageType.UnconnectedData);
             config.EnableUPnP = true;
-            
+
             var peer = new NetPeer(config);
             peer.Start(); // needed for initialization
 
