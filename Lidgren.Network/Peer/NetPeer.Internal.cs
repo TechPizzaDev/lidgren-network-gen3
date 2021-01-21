@@ -319,8 +319,6 @@ namespace Lidgren.Network
             }
         }
 
-        public static int incomingReleased = 0;
-
         private void Heartbeat()
         {
             AssertIsOnLibraryThread();
@@ -520,8 +518,6 @@ namespace Lidgren.Network
                             msg.Write(_receiveBuffer.AsSpan(offset, payloadByteLength));
                             msg.BitLength = payloadBitLength;
                             msg.BitPosition = 0;
-
-                            Interlocked.Increment(ref incomingReleased);
 
                             if (sender != null)
                             {

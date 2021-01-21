@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 
@@ -7,9 +6,6 @@ namespace Lidgren.Network
 {
     public partial class NetPeer
     {
-        public static int incomingCreated = 0;
-        public static int incomingRecycled = 0;
-
         internal NetQueue<NetOutgoingMessage>? _outgoingMessagePool = new NetQueue<NetOutgoingMessage>();
         internal NetQueue<NetIncomingMessage>? _incomingMessagePool = new NetQueue<NetIncomingMessage>();
 
@@ -29,47 +25,24 @@ namespace Lidgren.Network
 
         public NetOutgoingMessage CreateMessage(int minimumByteCapacity)
         {
-            var msg = CreateMessage();
-            msg.EnsureByteCapacity(minimumByteCapacity);
-            return msg;
+            var message = CreateMessage();
+            message.EnsureByteCapacity(minimumByteCapacity);
+            return message;
         }
 
         public NetOutgoingMessage CreateMessage(string? content)
         {
-            var msg = CreateMessage();
-            msg.Write(content);
-            return msg;
+            var message = CreateMessage();
+            message.Write(content);
+            return message;
         }
 
         internal NetIncomingMessage CreateIncomingMessage(NetIncomingMessageType type)
         {
-            string stt = Environment.StackTrace;
-
             if (_incomingMessagePool == null ||
                 !_incomingMessagePool.TryDequeue(out NetIncomingMessage? message))
             {
                 message = new NetIncomingMessage(StoragePool);
-
-                Interlocked.Increment(ref incomingCreated);
-
-                if (allocTraces.Add(stt))
-                {
-                    Console.WriteLine();
-                    Console.WriteLine("ALLOC:");
-                    Console.WriteLine(stt);
-                    Console.WriteLine();
-                    Console.WriteLine();
-                    stt = null;
-                }
-            }
-
-            if (stt != null && rentTraces.Add(stt))
-            {
-                Console.WriteLine();
-                Console.WriteLine("RENT:");
-                Console.WriteLine(stt);
-                Console.WriteLine();
-                Console.WriteLine();
             }
 
             message.MessageType = type;
@@ -78,24 +51,9 @@ namespace Lidgren.Network
 
         internal NetIncomingMessage CreateIncomingMessage(NetIncomingMessageType type, string? content)
         {
-            var msg = CreateIncomingMessage(type);
-            msg.Write(content);
-            return msg;
-
-            //if (string.IsNullOrEmpty(content))
-            //{
-            //    msg = CreateIncomingMessage(type, 1);
-            //    msg.Write(string.Empty);
-            //    msg.BitPosition = 0;
-            //    return msg;
-            //}
-            //
-            //int strByteCount = BitBuffer.StringEncoding.GetMaxByteCount(content.Length);
-            //msg = CreateIncomingMessage(type, strByteCount + 10);
-            //msg.Write(content);
-            //msg.BitPosition = 0;
-            //
-            //return msg;
+            var message = CreateIncomingMessage(type);
+            message.Write(content);
+            return message;
         }
 
         /// <summary>
@@ -109,10 +67,8 @@ namespace Lidgren.Network
             if (_incomingMessagePool == null)
                 return;
 
-            Interlocked.Increment(ref incomingRecycled);
-
-            //LidgrenException.Assert(
-            //    !_incomingMessagePool.Contains(message), "Recyling already recycled message! Thread race?");
+            LidgrenException.Assert(
+                !_incomingMessagePool.Contains(message), "Recyling already recycled message! Thread race?");
 
             //byte[] storage = message.GetBuffer();
             //message.SetBuffer(Array.Empty<byte>(), false);
@@ -151,8 +107,8 @@ namespace Lidgren.Network
             if (_outgoingMessagePool == null)
                 return;
 
-            //LidgrenException.Assert(
-            //    !_outgoingMessagePool.Contains(message), "Recyling already recycled message! Thread race?");
+            LidgrenException.Assert(
+                !_outgoingMessagePool.Contains(message), "Recyling already recycled message! Thread race?");
 
             _outgoingMessagePool.Enqueue(message);
         }
