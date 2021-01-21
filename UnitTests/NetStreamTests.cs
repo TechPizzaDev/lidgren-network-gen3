@@ -17,19 +17,6 @@ namespace UnitTests
             string appId = "NetStreamTest";
             int port = 20001;
 
-            Task.Run(() =>
-            {
-                while (true)
-                {
-                    Console.WriteLine("Incoming: " + 
-                        NetPeer.incomingRecycled + " / " +
-                        NetPeer.incomingCreated + " | " + 
-                        NetPeer.incomingReleased);
-
-                    Thread.Sleep(500);
-                }
-            });
-
             var serverThread = new Thread(() =>
             {
                 var config = new NetPeerConfiguration(appId)
@@ -41,6 +28,18 @@ namespace UnitTests
                 config.DisableMessageType(NetIncomingMessageType.DebugMessage);
                 var server = new NetServer(config);
                 server.Start();
+
+                Task.Run(() =>
+                {
+                    while (true)
+                    {
+                        Console.WriteLine("Server Incoming: " +
+                            server.Statistics.IncomingRecycled + " / " +
+                            server.Statistics.IncomingAllocated);
+
+                        Thread.Sleep(500);
+                    }
+                });
 
                 void OnStream(NetStream stream)
                 {
@@ -97,8 +96,6 @@ namespace UnitTests
 
                         case NetIncomingMessageType.StreamMessage:
                         {
-                            break;
-
                             var type = (NetStreamMessageType)message.ReadByte();
                             int channel = message.SequenceChannel;
 
@@ -152,16 +149,15 @@ namespace UnitTests
                             Console.WriteLine("Server " + message.MessageType);
                             break;
                     }
-
-                    server.Recycle(message);
                 }
             });
 
-            Thread[] clientThreads = new Thread[1];
+            Thread[] clientThreads = new Thread[4];
 
-            for (int i = 0; i < clientThreads.Length; i++)
+            for (int t = 0; t < clientThreads.Length; t++)
             {
-                clientThreads[i] = new Thread(() =>
+                int tt = t;
+                clientThreads[t] = new Thread(() =>
                 {
                     var config = new NetPeerConfiguration(appId)
                     {
@@ -171,6 +167,18 @@ namespace UnitTests
                     config.DisableMessageType(NetIncomingMessageType.DebugMessage);
                     var client = new NetClient(config);
                     client.Start();
+
+                    Task.Run(() =>
+                    {
+                        while (true)
+                        {
+                            Console.WriteLine("Client " + tt + " Outgoing: " +
+                                client.Statistics.OutgoingRecycled + " / " +
+                                client.Statistics.OutgoingAllocated);
+
+                            Thread.Sleep(500);
+                        }
+                    });
 
                     NetConnection connection = client.Connect(new IPEndPoint(IPAddress.Loopback, port));
 

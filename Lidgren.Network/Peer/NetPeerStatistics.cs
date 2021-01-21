@@ -19,6 +19,11 @@ namespace Lidgren.Network
         internal int _sentBytes;
         internal int _receivedBytes;
 
+        internal int _incomingAllocated;
+        internal int _incomingRecycled;
+        internal int _outgoingAllocated;
+        internal int _outgoingRecycled;
+
         internal NetPeerStatistics(NetPeer peer)
         {
             _peer = peer;
@@ -66,6 +71,14 @@ namespace Lidgren.Network
         /// Gets the number of received bytes since the NetPeer was initialized.
         /// </summary>
         public int ReceivedBytes => _receivedBytes;
+
+        public int IncomingAllocated => _incomingAllocated;
+
+        public int IncomingRecycled => _incomingRecycled;
+
+        public int OutgoingAllocated => _outgoingAllocated;
+
+        public int OutgoingRecycled => _outgoingRecycled;
 
         internal void PacketSent(int byteCount, int messageCount)
         {

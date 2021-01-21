@@ -18,6 +18,8 @@ namespace Lidgren.Network
                 !_outgoingMessagePool.TryDequeue(out NetOutgoingMessage? message))
             {
                 message = new NetOutgoingMessage(StoragePool);
+
+                Interlocked.Increment(ref Statistics._outgoingAllocated);
             }
 
             return message;
@@ -43,6 +45,8 @@ namespace Lidgren.Network
                 !_incomingMessagePool.TryDequeue(out NetIncomingMessage? message))
             {
                 message = new NetIncomingMessage(StoragePool);
+
+                Interlocked.Increment(ref Statistics._incomingAllocated);
             }
 
             message.MessageType = type;
@@ -77,6 +81,8 @@ namespace Lidgren.Network
             message.Reset();
             message.TrimExcess();
             _incomingMessagePool.Enqueue(message);
+
+            Interlocked.Increment(ref Statistics._incomingRecycled);
         }
 
         /// <summary>
@@ -96,6 +102,8 @@ namespace Lidgren.Network
                 message.Reset();
                 message.TrimExcess();
                 _incomingMessagePool.Enqueue(message);
+
+                Interlocked.Increment(ref Statistics._incomingRecycled);
             }
         }
 
@@ -111,6 +119,8 @@ namespace Lidgren.Network
                 !_outgoingMessagePool.Contains(message), "Recyling already recycled message! Thread race?");
 
             _outgoingMessagePool.Enqueue(message);
+
+            Interlocked.Increment(ref Statistics._outgoingRecycled);
         }
     }
 }
