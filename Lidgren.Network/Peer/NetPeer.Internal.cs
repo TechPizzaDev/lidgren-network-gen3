@@ -319,6 +319,8 @@ namespace Lidgren.Network
             }
         }
 
+        public static int incomingReleased = 0;
+
         private void Heartbeat()
         {
             AssertIsOnLibraryThread();
@@ -443,8 +445,10 @@ namespace Lidgren.Network
                 //LogVerbose("Received " + bytesReceived + " bytes");
 
                 if (UPnP != null && UPnP.Status == UPnPStatus.Discovering)
+                {
                     if (SetupUpnp(UPnP, now, _receiveBuffer.AsSpan(0, bytesReceived)))
                         return;
+                }
 
                 var senderEndPoint = (IPEndPoint)_senderRemote;
                 ConnectionLookup.TryGetValue(senderEndPoint, out NetConnection? sender);
@@ -471,11 +475,11 @@ namespace Lidgren.Network
                     byte high = _receiveBuffer[offset++];
 
                     bool isFragment = (low & 1) == 1;
-                    var sequenceNumber = (ushort)((low >> 1) | (high << 7));
+                    ushort sequenceNumber = (ushort)((low >> 1) | (high << 7));
 
                     numFragments++;
 
-                    var payloadBitLength = (ushort)(_receiveBuffer[offset++] | (_receiveBuffer[offset++] << 8));
+                    ushort payloadBitLength = (ushort)(_receiveBuffer[offset++] | (_receiveBuffer[offset++] << 8));
                     int payloadByteLength = NetBitWriter.BytesForBits(payloadBitLength);
 
                     if (bytesReceived - offset < payloadByteLength)
@@ -505,7 +509,7 @@ namespace Lidgren.Network
                                 ? NetIncomingMessageType.StreamMessage
                                 : NetIncomingMessageType.Data;
 
-                            var msg = CreateIncomingMessage(messageType);
+                            NetIncomingMessage msg = CreateIncomingMessage(messageType);
                             msg._baseMessageType = type;
                             msg.IsFragment = isFragment;
                             msg.ReceiveTime = now;
@@ -516,6 +520,8 @@ namespace Lidgren.Network
                             msg.Write(_receiveBuffer.AsSpan(offset, payloadByteLength));
                             msg.BitLength = payloadBitLength;
                             msg.BitPosition = 0;
+
+                            Interlocked.Increment(ref incomingReleased);
 
                             if (sender != null)
                             {

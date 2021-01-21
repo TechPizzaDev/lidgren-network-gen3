@@ -19,7 +19,7 @@ namespace Lidgren.Network
             ReliableUnorderedChannels + ReliableSequencedChannels + ReliableOrderedChannels +
             StreamChannels;
 
-        public const int SequenceNumbers = 1024 * 4;
+        public const int SequenceNumbers = 1024;
 
         public const int HeaderSize = 5;
 

@@ -469,18 +469,18 @@ namespace Lidgren.Network
             }
         }
 
-        internal void ReceivedMessage(NetIncomingMessage msg)
+        internal void ReceivedMessage(NetIncomingMessage message)
         {
             Peer.AssertIsOnLibraryThread();
 
-            NetMessageType type = msg._baseMessageType;
+            NetMessageType type = message._baseMessageType;
 
             int channelSlot = (int)type - 1;
             NetReceiverChannel? channel = _receiveChannels[channelSlot];
             if (channel == null)
                 channel = CreateReceiverChannel(type);
 
-            channel.ReceiveMessage(msg);
+            channel.ReceiveMessage(message);
         }
 
         private NetReceiverChannel CreateReceiverChannel(NetMessageType type)
@@ -518,7 +518,7 @@ namespace Lidgren.Network
             NetDeliveryMethod method, int sequenceChannel, out int windowSize, out int freeWindowSlots)
         {
             int channelSlot = (int)method - 1 + sequenceChannel;
-            var chan = _sendChannels[channelSlot];
+            NetSenderChannel? chan = _sendChannels[channelSlot];
             if (chan == null)
             {
                 windowSize = NetUtility.GetWindowSize(method);
@@ -534,7 +534,7 @@ namespace Lidgren.Network
         public bool CanSendImmediately(NetDeliveryMethod method, int sequenceChannel)
         {
             int channelSlot = (int)method - 1 + sequenceChannel;
-            var chan = _sendChannels[channelSlot];
+            NetSenderChannel? chan = _sendChannels[channelSlot];
             if (chan == null)
                 return true;
             return (chan.GetAllowedSends() - chan.QueuedSends.Count) > 0;

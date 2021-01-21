@@ -62,13 +62,13 @@ namespace Lidgren.Network
                     Peer.LogVerbose("Releasing withheld message #" + message);
                     Peer.ReleaseMessage(message);
                 }
-
                 return;
             }
 
             if (relate < 0)
             {
                 Peer.LogVerbose("Received message #" + message.SequenceNumber + " DROPPING DUPLICATE");
+                Peer.Recycle(message);
                 // duplicate
                 return;
             }
@@ -78,6 +78,7 @@ namespace Lidgren.Network
             {
                 // too early message!
                 Peer.LogDebug("Received " + message + " TOO EARLY! Expected " + _windowStart);
+                Peer.Recycle(message);
                 return;
             }
 

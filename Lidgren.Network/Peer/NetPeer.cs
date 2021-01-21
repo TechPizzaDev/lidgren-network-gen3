@@ -227,26 +227,27 @@ namespace Lidgren.Network
                 return true;
             }
 
-            TryWait:
-            long startTicks = Stopwatch.GetTimestamp();
-            if (!resetEvent.WaitOne(timeout))
+            do
             {
-                // When the timeout hits, try to read one last time.
-                return TryReadMessage(out message);
+                long startTicks = Stopwatch.GetTimestamp();
+                if (!resetEvent.WaitOne(timeout))
+                {
+                    // When the timeout hits, try to read one last time.
+                    return TryReadMessage(out message);
+                }
+
+                if (TryReadMessage(out message))
+                    return true;
+
+                // Missing a message should rarely happen as we use AutoResetEvent.
+                // The user is most likely reading messages without checking the reset event.
+
+                long elapsedTicks = Stopwatch.GetTimestamp() - startTicks;
+                timeout -= TimeSpan.FromSeconds(elapsedTicks * NetTime.InverseFrequency);
+
             }
-
-            if (TryReadMessage(out message))
-                return true;
-
-            // Missing a message should rarely happen as we use AutoResetEvent.
-            // The user is most likely reading messages without checking the reset event.
-
-            long elapsedTicks = Stopwatch.GetTimestamp() - startTicks;
-            timeout -= TimeSpan.FromSeconds(elapsedTicks * NetTime.InverseFrequency);
-
             // Go back and wait again if we have leftover time.
-            if (timeout.Ticks > 0)
-                goto TryWait;
+            while (timeout.Ticks > 0);
 
             return false;
         }
@@ -341,7 +342,7 @@ namespace Lidgren.Network
                         while (_outgoingMessagePool.TryDequeue(out var message))
                             message.Dispose();
 
-                        _outgoingMessagePool.Dispose();
+                        //_outgoingMessagePool.Dispose();
                     }
 
                     if (_incomingMessagePool != null)
@@ -349,7 +350,7 @@ namespace Lidgren.Network
                         while (_incomingMessagePool.TryDequeue(out var message))
                             message.Dispose();
 
-                        _incomingMessagePool.Dispose();
+                        //_incomingMessagePool.Dispose();
                     }
                 }
                 _isDisposed = true;

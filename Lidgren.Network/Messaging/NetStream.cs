@@ -272,6 +272,10 @@ namespace Lidgren.Network
 
         private NetSendResult SendStreamMessage(NetOutgoingMessage message)
         {
+            if (!Connection.CanSendImmediately(NetDeliveryMethod.Stream, Channel))
+            {
+                Thread.Sleep(100);
+            }
             return Connection.SendMessage(message, NetDeliveryMethod.Stream, Channel);
         }
 

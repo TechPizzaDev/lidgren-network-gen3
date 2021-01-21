@@ -17,6 +17,19 @@ namespace UnitTests
             string appId = "NetStreamTest";
             int port = 20001;
 
+            Task.Run(() =>
+            {
+                while (true)
+                {
+                    Console.WriteLine("Incoming: " + 
+                        NetPeer.incomingRecycled + " / " +
+                        NetPeer.incomingCreated + " | " + 
+                        NetPeer.incomingReleased);
+
+                    Thread.Sleep(500);
+                }
+            });
+
             var serverThread = new Thread(() =>
             {
                 var config = new NetPeerConfiguration(appId)
@@ -33,9 +46,9 @@ namespace UnitTests
                 {
                     int transferred = 0;
 
-                    var readTask = Task.Run(() =>
+                    var t = new Thread(() =>
                     {
-                        Span<byte> tmp = stackalloc byte[4096];
+                        Span<byte> tmp = stackalloc byte[1024 * 512];
                         int read;
                         while ((read = stream.Read(tmp)) > 0)
                         {
@@ -45,13 +58,15 @@ namespace UnitTests
 
                         Console.WriteLine($"Server Stream {stream.Channel} Read Finished: {transferred}");
                     });
+                    t.Name = "Client Stream";
+                    t.Start();
 
                     Task.Run(() =>
                     {
-                        while (!readTask.IsCompleted)
+                        while (t.IsAlive)
                         {
                             Console.WriteLine($"Server Stream {stream.Channel} Read Transferred: " + transferred);
-                            Thread.Sleep(500);
+                            Thread.Sleep(1000);
                         }
                     });
                 }
@@ -82,6 +97,8 @@ namespace UnitTests
 
                         case NetIncomingMessageType.StreamMessage:
                         {
+                            break;
+
                             var type = (NetStreamMessageType)message.ReadByte();
                             int channel = message.SequenceChannel;
 
@@ -135,10 +152,12 @@ namespace UnitTests
                             Console.WriteLine("Server " + message.MessageType);
                             break;
                     }
+
+                    server.Recycle(message);
                 }
             });
 
-            Thread[] clientThreads = new Thread[2];
+            Thread[] clientThreads = new Thread[1];
 
             for (int i = 0; i < clientThreads.Length; i++)
             {
@@ -165,10 +184,10 @@ namespace UnitTests
                     var msg = client.CreateMessage("hello");
                     connection.SendMessage(msg, NetDeliveryMethod.ReliableOrdered, 0);
 
-                    for (int j = 0; j < 4; j++)
+                    for (int j = 0; j < 8; j++)
                     {
                         int channel = j;
-                        Task.Run(() =>
+                        var t = new Thread(() =>
                         {
                             try
                             {
@@ -187,6 +206,8 @@ namespace UnitTests
                                 Console.WriteLine(ex);
                             }
                         });
+                        t.Name = "Server Stream " + j;
+                        t.Start();
                     }
 
                     while (client.TryReadMessage(5000, out var message))

@@ -57,11 +57,13 @@ namespace Lidgren.Network
         {
             _baseMessageType = NetMessageType.LibraryError;
             MessageType = NetIncomingMessageType.Error;
+            BitPosition = 0;
             BitLength = 0;
             SenderConnection = null;
             SenderEndPoint = null;
             IsFragment = false;
             SequenceNumber = 0;
+            ReceiveTime = default;
         }
 
         // TODO: make Decrypt() and ReadLocalTime() into extension methods
