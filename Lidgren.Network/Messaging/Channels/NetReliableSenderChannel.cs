@@ -146,8 +146,6 @@ namespace Lidgren.Network
             {
                 if (Interlocked.Decrement(ref storedMessage.Message._recyclingCount) <= 0)
                     _connection.Peer.Recycle(storedMessage.Message);
-                else
-                    Console.WriteLine();
             }
             storedMessage.Reset();
         }
