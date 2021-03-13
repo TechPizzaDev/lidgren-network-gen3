@@ -53,6 +53,15 @@ namespace Lidgren.Network
                 return NetSendResult.Dropped;
             }
 
+            if (message.BitLength >= ushort.MaxValue &&
+                _connection._peerConfiguration.UnreliableSizeBehaviour == NetUnreliableSizeBehaviour.IgnoreMTU)
+            {
+                _connection.Peer.LogError(string.Format(
+                    "Unreliable message size exceeded {0} ({1} bits)",
+                    ushort.MaxValue, message.BitLength));
+                return NetSendResult.Dropped;
+            }
+
             QueuedSends.Enqueue(message);
             return NetSendResult.Sent;
         }
