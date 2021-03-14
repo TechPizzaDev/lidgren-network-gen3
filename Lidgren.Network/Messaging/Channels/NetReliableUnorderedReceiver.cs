@@ -2,70 +2,72 @@
 namespace Lidgren.Network
 {
     internal sealed class NetReliableUnorderedReceiver : NetReceiverChannel
-	{
-		private int _windowStart;
-		private int _windowSize;
-		private NetBitArray _earlyReceived;
+    {
+        private int _windowStart;
+        private int _windowSize;
+        private NetBitArray _earlyReceived;
 
-		public NetReliableUnorderedReceiver(NetConnection connection, int windowSize)
-			: base(connection)
-		{
-			_windowSize = windowSize;
-			_earlyReceived = new NetBitArray(windowSize);
-		}
+        public NetReliableUnorderedReceiver(NetConnection connection, int windowSize)
+            : base(connection)
+        {
+            LidgrenException.AssertIsPowerOfTwo((ulong)windowSize, nameof(windowSize));
 
-		private void AdvanceWindow()
-		{
-			_earlyReceived.Set(_windowStart % _windowSize, false);
-			_windowStart = (_windowStart + 1) % NetConstants.SequenceNumbers;
-		}
+            _windowSize = windowSize;
+            _earlyReceived = new NetBitArray(windowSize);
+        }
 
-		public override void ReceiveMessage(in NetMessageView message)
-		{
-			int relate = NetUtility.RelativeSequenceNumber(message.SequenceNumber, _windowStart);
+        private void AdvanceWindow()
+        {
+            _earlyReceived.Set(NetUtility.PowOf2Mod(_windowStart, _windowSize), false);
+            _windowStart = (_windowStart + 1) % NetConstants.SequenceNumbers;
+        }
 
-			// ack no matter what
-			Connection.QueueAck(message.BaseMessageType, message.SequenceNumber);
+        public override void ReceiveMessage(in NetMessageView message)
+        {
+            int relate = NetUtility.RelativeSequenceNumber(message.SequenceNumber, _windowStart);
 
-			if (relate == 0)
-			{
-				// Log("Received message #" + message.SequenceNumber + " right on time");
+            // ack no matter what
+            Connection.QueueAck(message.BaseMessageType, message.SequenceNumber);
 
-				// excellent, right on time
+            if (relate == 0)
+            {
+                // Log("Received message #" + message.SequenceNumber + " right on time");
 
-				AdvanceWindow();
-				Peer.ReleaseMessage(message);
+                // excellent, right on time
 
-				// release withheld messages
-				int nextSeqNr = (message.SequenceNumber + 1) % NetConstants.SequenceNumbers;
+                AdvanceWindow();
+                Peer.ReleaseMessage(message);
 
-				while (_earlyReceived[nextSeqNr % _windowSize])
-				{
-					AdvanceWindow();
-					nextSeqNr++;
-				}
+                // release withheld messages
+                int nextSeqNr = (message.SequenceNumber + 1) % NetConstants.SequenceNumbers;
 
-				return;
-			}
+                while (_earlyReceived[NetUtility.PowOf2Mod(nextSeqNr, _windowSize)])
+                {
+                    AdvanceWindow();
+                    nextSeqNr++;
+                }
 
-			if (relate < 0)
-			{
-				// duplicate
-				Peer.LogVerbose("Received message #" + message.SequenceNumber + " DROPPING DUPLICATE");
-				return;
-			}
+                return;
+            }
 
-			// relate > 0 = early message
-			if (relate > _windowSize)
-			{
-				// too early message!
-				Peer.LogDebug("Received " + message.ToString() + " TOO EARLY! Expected " + _windowStart);
-				return;
-			}
+            if (relate < 0)
+            {
+                // duplicate
+                Peer.LogVerbose("Received message #" + message.SequenceNumber + " DROPPING DUPLICATE");
+                return;
+            }
 
-			_earlyReceived.Set(message.SequenceNumber % _windowSize, true);
+            // relate > 0 = early message
+            if (relate > _windowSize)
+            {
+                // too early message!
+                Peer.LogDebug("Received " + message.ToString() + " TOO EARLY! Expected " + _windowStart);
+                return;
+            }
 
-			Peer.ReleaseMessage(message);
-		}
-	}
+            _earlyReceived.Set(NetUtility.PowOf2Mod(message.SequenceNumber, _windowSize), true);
+
+            Peer.ReleaseMessage(message);
+        }
+    }
 }

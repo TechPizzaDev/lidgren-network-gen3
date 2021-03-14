@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -147,7 +148,8 @@ namespace Lidgren.Network
         /// </summary>
         public bool Get(int bitIndex)
         {
-            return (_data![bitIndex / BitsPerElement] & (1 << (bitIndex % BitsPerElement))) != 0;
+            uint value = _data![bitIndex / BitsPerElement] & (1u << bitIndex);
+            return value != 0;
         }
 
         /// <summary>
@@ -156,7 +158,7 @@ namespace Lidgren.Network
         public void Set(int bitIndex, bool value)
         {
             int index = bitIndex / BitsPerElement;
-            uint mask = (uint)(1 << (bitIndex % BitsPerElement));
+            uint mask = 1u << (bitIndex % BitsPerElement);
             if (value)
             {
                 _data![index] |= mask;

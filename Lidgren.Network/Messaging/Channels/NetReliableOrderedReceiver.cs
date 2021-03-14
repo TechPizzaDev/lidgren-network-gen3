@@ -1,4 +1,5 @@
-﻿
+﻿using System;
+
 namespace Lidgren.Network
 {
     internal sealed class NetReliableOrderedReceiver : NetReceiverChannel
@@ -12,6 +13,8 @@ namespace Lidgren.Network
         public NetReliableOrderedReceiver(NetConnection connection, int windowSize)
             : base(connection)
         {
+            LidgrenException.AssertIsPowerOfTwo((ulong)windowSize, nameof(windowSize));
+
             _windowSize = windowSize;
             _earlyReceived = new NetBitArray(windowSize);
             WithheldMessages = new NetIncomingMessage[windowSize];
@@ -19,7 +22,7 @@ namespace Lidgren.Network
 
         private void AdvanceWindow()
         {
-            _earlyReceived.Set(_windowStart % _windowSize, false);
+            _earlyReceived.Set(NetUtility.PowOf2Mod(_windowStart, _windowSize), false);
             _windowStart = (_windowStart + 1) % NetConstants.SequenceNumbers;
         }
 
@@ -37,7 +40,7 @@ namespace Lidgren.Network
                 // excellent, right on time
 
                 int nextSeqNr = (message.SequenceNumber + 1) % NetConstants.SequenceNumbers;
-                nextSeqNr %= _windowSize;
+                nextSeqNr = NetUtility.PowOf2Mod(nextSeqNr, _windowSize);
 
                 AdvanceWindow();
                 Peer.ReleaseMessage(message);
@@ -53,7 +56,7 @@ namespace Lidgren.Network
 
                     AdvanceWindow();
                     nextSeqNr++;
-                    nextSeqNr %= _windowSize;
+                    nextSeqNr = NetUtility.PowOf2Mod(nextSeqNr, _windowSize);
 
                     Peer.LogVerbose("Releasing withheld message #" + withheldMessage);
                     Peer.ReleaseMessage(withheldMessage);
@@ -76,10 +79,12 @@ namespace Lidgren.Network
                 return;
             }
 
-            _earlyReceived.Set(message.SequenceNumber % _windowSize, true);
+            int messageIndex = NetUtility.PowOf2Mod(message.SequenceNumber, _windowSize);
+
+            _earlyReceived.Set(messageIndex, true);
             Peer.LogVerbose("Received " + message.ToString() + " WITHHOLDING, waiting for " + _windowStart);
 
-            ref NetIncomingMessage? messageSlot = ref WithheldMessages[message.SequenceNumber % _windowSize];
+            ref NetIncomingMessage? messageSlot = ref WithheldMessages[messageIndex];
 
             // the amount of messages may overflow within a given window so just dump existing message
             if (messageSlot != null)

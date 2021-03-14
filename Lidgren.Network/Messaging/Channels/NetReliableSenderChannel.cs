@@ -21,12 +21,8 @@ namespace Lidgren.Network
 
         public NetReliableSenderChannel(NetConnection connection, int windowSize)
         {
-            if (!NetUtility.IsPowerOfTwo((ulong)windowSize))
-            {
-                throw new ArgumentOutOfRangeException(
-                    nameof(windowSize), "Window size must be a power of two.");
-            }
-
+            LidgrenException.AssertIsPowerOfTwo((ulong)windowSize, nameof(windowSize));
+            
             _connection = connection;
             _windowSize = windowSize;
             _windowStart = 0;
@@ -106,7 +102,7 @@ namespace Lidgren.Network
             int seqNr = _sendStart;
             _sendStart = (seqNr + 1) % NetConstants.SequenceNumbers;
 
-            ref NetStoredReliableMessage storedMessage = ref StoredMessages[seqNr % _windowSize];
+            ref NetStoredReliableMessage storedMessage = ref StoredMessages[NetUtility.PowOf2Mod(seqNr, _windowSize)];
             LidgrenException.Assert(storedMessage.Message == null);
 
             _connection.QueueSendMessage(message, seqNr);
@@ -162,7 +158,7 @@ namespace Lidgren.Network
                 LidgrenException.Assert(seqNr == windowStart);
 
                 receivedAcks[windowStart] = false;
-                DestoreMessage(NetUtility.FastMod(windowStart, windowSize));
+                DestoreMessage(NetUtility.PowOf2Mod(windowStart, windowSize));
                 windowStart = (windowStart + 1) % NetConstants.SequenceNumbers;
 
                 // advance window if we already have early acks
@@ -170,10 +166,10 @@ namespace Lidgren.Network
                 {
                     //m_connection.m_peer.LogDebug("Using early ack for #" + m_windowStart + "...");
                     receivedAcks[windowStart] = false;
-                    DestoreMessage(NetUtility.FastMod(windowStart, windowSize));
+                    DestoreMessage(NetUtility.PowOf2Mod(windowStart, windowSize));
 
                     LidgrenException.Assert(
-                        StoredMessages[NetUtility.FastMod(windowStart, windowSize)].Message == null,
+                        StoredMessages[NetUtility.PowOf2Mod(windowStart, windowSize)].Message == null,
                         "Stored message has not been recycled.");
 
                     windowStart = (windowStart + 1) % NetConstants.SequenceNumbers;
@@ -218,7 +214,7 @@ namespace Lidgren.Network
 
                 if (!receivedAcks[rnr])
                 {
-                    ref NetStoredReliableMessage storedMessage = ref StoredMessages[NetUtility.FastMod(rnr, windowSize)];
+                    ref NetStoredReliableMessage storedMessage = ref StoredMessages[NetUtility.PowOf2Mod(rnr, windowSize)];
                     if (storedMessage.NumSent == 1)
                     {
                         LidgrenException.Assert(storedMessage.Message != null, "Stored message has no outgoing message.");

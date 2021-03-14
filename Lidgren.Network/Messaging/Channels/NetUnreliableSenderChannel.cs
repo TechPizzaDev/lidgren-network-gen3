@@ -18,6 +18,8 @@ namespace Lidgren.Network
 
         public NetUnreliableSenderChannel(NetConnection connection, int windowSize)
         {
+            LidgrenException.AssertIsPowerOfTwo((ulong)windowSize, nameof(windowSize));
+
             _connection = connection;
             _windowSize = windowSize;
             _windowStart = 0;
@@ -27,7 +29,9 @@ namespace Lidgren.Network
 
         public override int GetAllowedSends()
         {
-            int value = _windowSize - (_sendStart + NetConstants.SequenceNumbers - _windowStart) % _windowSize;
+            int value = NetUtility.PowOf2Mod(
+                _windowSize - (_sendStart + NetConstants.SequenceNumbers - _windowStart), _windowSize);
+            
             LidgrenException.Assert(value >= 0 && value <= _windowSize);
             return value;
         }

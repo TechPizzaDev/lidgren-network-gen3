@@ -537,7 +537,7 @@ namespace Lidgren.Network
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static int FastMod(int value, int denominator)
+        internal static int PowOf2Mod(int value, int denominator)
         {
             return value & (denominator - 1);
         }
