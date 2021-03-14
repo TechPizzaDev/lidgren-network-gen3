@@ -83,13 +83,13 @@ namespace Lidgren.Network
 
                 Interlocked.Add(ref chunk._recyclingCount, recipientCount);
 
-                foreach (var recipient in recipients.AsListEnumerator())
+                foreach (NetConnection? recipient in recipients.AsListEnumerator())
                 {
                     if (recipient == null)
                         continue;
 
-                    var result = recipient.EnqueueMessage(chunk, method, sequenceChannel);
-                    if ((int)result > (int)retval)
+                    NetSendResult result = recipient.EnqueueMessage(chunk, method, sequenceChannel);
+                    if (result > retval)
                         retval = result; // return "worst" result
                 }
 
@@ -98,7 +98,7 @@ namespace Lidgren.Network
             return retval;
         }
 
-        private void HandleReleasedFragment(in NetMessageView message)
+        private bool HandleReleasedFragment(in NetMessageView message)
         {
             if (message.Connection == null)
                 throw new ArgumentException("The message has no associated connection.", nameof(message));
@@ -107,7 +107,7 @@ namespace Lidgren.Network
 
             // read fragmentation header and combine fragments
             int headerOffset = 0;
-            if(!NetFragmentationHelper.ReadHeader(
+            if (!NetFragmentationHelper.ReadHeader(
                 message.Span,
                 ref headerOffset,
                 out int group,
@@ -116,7 +116,7 @@ namespace Lidgren.Network
                 out int chunkNumber))
             {
                 LogWarning("Failed to read fragmentation header.");
-                return;
+                return false;
             }
 
             LidgrenException.Assert(message.Span.Length > headerOffset);
@@ -134,7 +134,7 @@ namespace Lidgren.Network
             if (chunkNumber >= totalChunkCount)
             {
                 LogWarning("Index out of bounds for chunk " + chunkNumber + " (total chunks " + totalChunkCount + ")");
-                return;
+                return false;
             }
 
             if (!_receivedFragmentGroups.TryGetValue(message.Connection, out var groups))
@@ -166,23 +166,25 @@ namespace Lidgren.Network
             LogVerbose(
                 "Received fragment " + chunkNumber + " of " + totalChunkCount + " (" + chunkCount + " chunks received)");
 
-            if (chunkCount == totalChunkCount)
+            if (chunkCount != totalChunkCount)
             {
-                // Done! Transform this incoming message
-                var incomingMessage = message.ToIncomingMessage(this);             
-                incomingMessage.SetBuffer(info.Data);
-                incomingMessage.BitLength = totalBits;
-                incomingMessage.IsFragment = false;
-
-                LogVerbose(
-                    "Fragment group #" + group + " fully received in " +
-                    totalChunkCount + " chunks (" + totalBits + " bits)");
-
-                groups.Remove(group);
-
-                ReleaseMessage(incomingMessage);
+                return false;
             }
-            return;
+
+            // Done! Transform this incoming message
+            var incomingMessage = message.ToIncomingMessage(this);
+            incomingMessage.SetBuffer(info.Data);
+            incomingMessage.BitLength = totalBits;
+            incomingMessage.IsFragment = false;
+
+            LogVerbose(
+                "Fragment group #" + group + " fully received in " +
+                totalChunkCount + " chunks (" + totalBits + " bits)");
+
+            groups.Remove(group);
+
+            ReleaseMessage(incomingMessage);
+            return true;
         }
     }
 }

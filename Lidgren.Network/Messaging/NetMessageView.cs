@@ -12,7 +12,7 @@ namespace Lidgren.Network
         public int SequenceNumber { get; }
         public IPEndPoint? EndPoint { get; }
         public NetConnection? Connection { get; }
-        public NetBuffer? Message { get; }
+        public NetBuffer? Buffer { get; }
         public ReadOnlySpan<byte> Span { get; }
         public int BitLength { get; }
 
@@ -35,15 +35,17 @@ namespace Lidgren.Network
             SequenceNumber = sequenceNumber;
             EndPoint = endPoint;
             Connection = connection;
-            Message = message;
+            Buffer = message;
             Span = span;
             BitLength = bitLength;
         }
 
         public NetIncomingMessage ToIncomingMessage(NetPeer peer)
         {
-            if (Message is NetIncomingMessage incoming)
+            if (Buffer is NetIncomingMessage incoming)
+            {
                 return incoming;
+            }
 
             NetIncomingMessage msg = peer.CreateIncomingMessage(MessageType);
             msg._baseMessageType = BaseMessageType;

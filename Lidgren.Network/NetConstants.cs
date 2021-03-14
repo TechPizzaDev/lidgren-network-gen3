@@ -23,7 +23,7 @@ namespace Lidgren.Network
 
         public const int HeaderSize = 5;
 
-        public const int DefaultWindowSize = 128;
+        public const int DefaultWindowSize = 256;
         public const int UnreliableWindowSize = DefaultWindowSize * 2;
         public const int ReliableOrderedWindowSize = DefaultWindowSize;
         public const int ReliableSequencedWindowSize = DefaultWindowSize;

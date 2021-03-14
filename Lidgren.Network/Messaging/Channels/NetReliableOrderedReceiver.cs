@@ -33,7 +33,7 @@ namespace Lidgren.Network
             if (relate == 0)
             {
                 // Log("Received message #" + message.SequenceNumber + " right on time");
-                
+
                 // excellent, right on time
 
                 int nextSeqNr = (message.SequenceNumber + 1) % NetConstants.SequenceNumbers;
@@ -45,11 +45,11 @@ namespace Lidgren.Network
                 // release withheld messages
                 while (_earlyReceived[nextSeqNr])
                 {
-                    var withheldMessage = WithheldMessages[nextSeqNr]!;
+                    NetIncomingMessage? withheldMessage = WithheldMessages[nextSeqNr];
                     LidgrenException.Assert(withheldMessage != null);
 
                     // remove it from withheld messages
-                    WithheldMessages[nextSeqNr] = default!;
+                    WithheldMessages[nextSeqNr] = default;
 
                     AdvanceWindow();
                     nextSeqNr++;
@@ -78,7 +78,16 @@ namespace Lidgren.Network
 
             _earlyReceived.Set(message.SequenceNumber % _windowSize, true);
             Peer.LogVerbose("Received " + message.ToString() + " WITHHOLDING, waiting for " + _windowStart);
-            WithheldMessages[message.SequenceNumber % _windowSize] = message.ToIncomingMessage(Peer);
+
+            ref NetIncomingMessage? messageSlot = ref WithheldMessages[message.SequenceNumber % _windowSize];
+
+            // the amount of messages may overflow within a given window so just dump existing message
+            if (messageSlot != null)
+            {
+                Peer.Recycle(messageSlot);
+            }
+
+            messageSlot = message.ToIncomingMessage(Peer);
         }
     }
 }

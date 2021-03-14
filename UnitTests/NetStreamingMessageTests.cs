@@ -14,6 +14,7 @@ namespace UnitTests
 
             string appId = "NetStreamingMessages";
             int port = 20002;
+            int clientCount = 12;
 
             var serverThread = new Thread(() =>
             {
@@ -33,14 +34,15 @@ namespace UnitTests
                     {
                         Console.WriteLine("Server Incoming: " +
                             server.Statistics.IncomingRecycled + " / " +
-                            server.Statistics.IncomingAllocated);
+                            server.Statistics.IncomingAllocated + " # " +
+                            server._incomingMessagePool.Count);
 
                         Thread.Sleep(500);
                     }
                 });
 
-                bool stop = false;
-                while (!stop && server.TryReadMessage(10000, out var message))
+                int count = clientCount;
+                while (count > 0 && server.TryReadMessage(10000, out var message))
                 {
                     switch (message.MessageType)
                     {
@@ -59,11 +61,9 @@ namespace UnitTests
                         case NetIncomingMessageType.Data:
                             Console.WriteLine("Server Data: " + message.ByteLength + " bytes");
 
-                            var resp = server.CreateMessage("received");
+                            var resp = server.CreateMessage("received " + count);
                             message.SenderConnection?.SendMessage(resp, NetDeliveryMethod.ReliableOrdered, 0);
-                            Thread.Sleep(100);
-                            server.Shutdown(null);
-                            stop = true;
+                            count--;
                             break;
 
                         case NetIncomingMessageType.ErrorMessage:
@@ -76,10 +76,11 @@ namespace UnitTests
                     }
                 }
 
+                Thread.Sleep(100);
                 server.Shutdown(null);
             });
 
-            Thread[] clientThreads = new Thread[1];
+            Thread[] clientThreads = new Thread[clientCount];
 
             for (int t = 0; t < clientThreads.Length; t++)
             {
@@ -89,7 +90,8 @@ namespace UnitTests
                     var config = new NetPeerConfiguration(appId)
                     {
                         AcceptIncomingConnections = false,
-                        AutoExpandMTU = true
+                        AutoExpandMTU = true,
+                        SendBufferSize = 1024 * 1024
                     };
                     config.DisableMessageType(NetIncomingMessageType.DebugMessage);
                     var client = new NetClient(config);

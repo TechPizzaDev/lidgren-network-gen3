@@ -78,7 +78,10 @@ namespace Lidgren.Network
 
             if (message.IsFragment)
             {
-                HandleReleasedFragment(message);
+                if (!HandleReleasedFragment(message))
+                {
+                    TryRecycle(message);
+                }
                 return;
             }
 

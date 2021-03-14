@@ -113,6 +113,10 @@ namespace Samples
                         Console.WriteLine("Server Error: " + message.ReadString());
                         break;
 
+                    case NetIncomingMessageType.Error:
+                        Console.WriteLine("Server Error: " + message.ReadString());
+                        break;
+
                     /*
                     case NetIncomingMessageType.StreamMessage:
                     {

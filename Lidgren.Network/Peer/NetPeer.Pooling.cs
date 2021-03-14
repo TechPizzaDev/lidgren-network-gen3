@@ -122,5 +122,17 @@ namespace Lidgren.Network
 
             Interlocked.Increment(ref Statistics._outgoingRecycled);
         }
+
+        internal void TryRecycle(in NetMessageView view)
+        {
+            if (view.Buffer is NetIncomingMessage incoming)
+            {
+                Recycle(incoming);
+            }
+            else if (view.Buffer is NetOutgoingMessage outgoing)
+            {
+                Recycle(outgoing);
+            }
+        }
     }
 }

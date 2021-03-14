@@ -79,7 +79,7 @@ namespace UnitTests
                                 break;
 
                             case NetIncomingMessageType.Error:
-                                throw new Exception("Received error message!");
+                                throw new Exception("Received error!");
 
                             case NetIncomingMessageType.Data:
                                 Console.WriteLine("Data: " + message.ReadString());
