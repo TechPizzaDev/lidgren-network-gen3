@@ -219,7 +219,7 @@ namespace Lidgren.Network
                 }
 
                 // Parse incoming acks (may trigger resends)
-                while (_queuedIncomingAcks.TryDequeue(out var incAck))
+                while (_queuedIncomingAcks.TryDequeue(out (NetMessageType Type, int SequenceNumber) incAck))
                 {
                     //m_peer.LogVerbose("Received ack for " + acktp + "#" + seqNr);
                     NetSenderChannel? channel = _sendChannels[(int)incAck.Type - 1];

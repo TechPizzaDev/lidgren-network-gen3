@@ -21,6 +21,12 @@ namespace Lidgren.Network
 
         public NetReliableSenderChannel(NetConnection connection, int windowSize)
         {
+            if (!NetUtility.IsPowerOfTwo((ulong)windowSize))
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(windowSize), "Window size must be a power of two.");
+            }
+
             _connection = connection;
             _windowSize = windowSize;
             _windowStart = 0;
@@ -98,7 +104,7 @@ namespace Lidgren.Network
         private void ExecuteSend(TimeSpan now, NetOutgoingMessage message)
         {
             int seqNr = _sendStart;
-            _sendStart = (_sendStart + 1) % NetConstants.SequenceNumbers;
+            _sendStart = (seqNr + 1) % NetConstants.SequenceNumbers;
 
             ref NetStoredReliableMessage storedMessage = ref StoredMessages[seqNr % _windowSize];
             LidgrenException.Assert(storedMessage.Message == null);
@@ -134,8 +140,10 @@ namespace Lidgren.Network
         // seqNr is the actual nr received
         public override void ReceiveAcknowledge(TimeSpan now, int seqNr)
         {
+            ref int windowStart = ref _windowStart;
+
             // late (dupe), on time or early ack?
-            int relate = NetUtility.RelativeSequenceNumber(seqNr, _windowStart);
+            int relate = NetUtility.RelativeSequenceNumber(seqNr, windowStart);
 
             if (relate < 0)
             {
@@ -143,29 +151,32 @@ namespace Lidgren.Network
                 return; // late/duplicate ack
             }
 
+            int windowSize = _windowSize;
+            NetBitArray receivedAcks = _receivedAcks;
+
             if (relate == 0)
             {
                 //m_connection.m_peer.LogDebug("Received right-on-time ack for #" + seqNr);
 
                 // ack arrived right on time
-                LidgrenException.Assert(seqNr == _windowStart);
+                LidgrenException.Assert(seqNr == windowStart);
 
-                _receivedAcks[_windowStart] = false;
-                DestoreMessage(_windowStart % _windowSize);
-                _windowStart = (_windowStart + 1) % NetConstants.SequenceNumbers;
+                receivedAcks[windowStart] = false;
+                DestoreMessage(NetUtility.FastMod(windowStart, windowSize));
+                windowStart = (windowStart + 1) % NetConstants.SequenceNumbers;
 
                 // advance window if we already have early acks
-                while (_receivedAcks.Get(_windowStart))
+                while (receivedAcks.Get(windowStart))
                 {
                     //m_connection.m_peer.LogDebug("Using early ack for #" + m_windowStart + "...");
-                    _receivedAcks[_windowStart] = false;
-                    DestoreMessage(_windowStart % _windowSize);
+                    receivedAcks[windowStart] = false;
+                    DestoreMessage(NetUtility.FastMod(windowStart, windowSize));
 
                     LidgrenException.Assert(
-                        StoredMessages[_windowStart % _windowSize].Message == null,
+                        StoredMessages[NetUtility.FastMod(windowStart, windowSize)].Message == null,
                         "Stored message has not been recycled.");
 
-                    _windowStart = (_windowStart + 1) % NetConstants.SequenceNumbers;
+                    windowStart = (windowStart + 1) % NetConstants.SequenceNumbers;
                     //m_connection.m_peer.LogDebug("Advancing window to #" + m_windowStart);
                 }
                 return;
@@ -184,8 +195,8 @@ namespace Lidgren.Network
             if (sendRelate <= 0)
             {
                 // yes, we've sent this message - it's an early (but valid) ack
-                if (!_receivedAcks[seqNr])
-                    _receivedAcks[seqNr] = true;
+                if (!receivedAcks[seqNr])
+                    receivedAcks[seqNr] = true;
                 //else
                 //   we've already destored/been acked for this message
             }
@@ -205,13 +216,9 @@ namespace Lidgren.Network
                 if (rnr < 0)
                     rnr = NetConstants.SequenceNumbers - 1;
 
-                if (_receivedAcks[rnr])
+                if (!receivedAcks[rnr])
                 {
-                    // m_connection.m_peer.LogDebug("Not resending #" + rnr + " (since we got ack)");
-                }
-                else
-                {
-                    ref NetStoredReliableMessage storedMessage = ref StoredMessages[rnr % _windowSize];
+                    ref NetStoredReliableMessage storedMessage = ref StoredMessages[NetUtility.FastMod(rnr, windowSize)];
                     if (storedMessage.NumSent == 1)
                     {
                         LidgrenException.Assert(storedMessage.Message != null, "Stored message has no outgoing message.");
@@ -230,9 +237,13 @@ namespace Lidgren.Network
                         //    already resent recently
                     }
                 }
+                else
+                {
+                    // m_connection.m_peer.LogDebug("Not resending #" + rnr + " (since we got ack)");
+                }
 
             }
-            while (rnr != _windowStart);
+            while (rnr != windowStart);
         }
     }
 }

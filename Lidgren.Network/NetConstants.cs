@@ -26,6 +26,7 @@ namespace Lidgren.Network
         public const int UnreliableWindowSize = DefaultWindowSize * 2;
         public const int ReliableOrderedWindowSize = DefaultWindowSize;
         public const int ReliableSequencedWindowSize = DefaultWindowSize;
+        public const int ReliableUnorderedWindowSize = DefaultWindowSize;
 
         public const int MaxFragmentationGroups = ushort.MaxValue - 1;
         public const int UnfragmentedMessageHeaderSize = 5;

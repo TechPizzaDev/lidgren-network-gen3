@@ -12,7 +12,7 @@ namespace Lidgren.Network
     /// </summary>
     public readonly struct NetBitArray : IEquatable<NetBitArray>
     {
-        public static int BitsPerElement => sizeof(uint) * 8;
+        public const int BitsPerElement = sizeof(uint) * 8;
 
         private readonly uint[]? _data;
 
@@ -147,9 +147,6 @@ namespace Lidgren.Network
         /// </summary>
         public bool Get(int bitIndex)
         {
-            if ((uint)bitIndex >= (uint)Length)
-                throw new IndexOutOfRangeException();
-
             return (_data![bitIndex / BitsPerElement] & (1 << (bitIndex % BitsPerElement))) != 0;
         }
 
@@ -158,9 +155,6 @@ namespace Lidgren.Network
         /// </summary>
         public void Set(int bitIndex, bool value)
         {
-            if ((uint)bitIndex >= (uint)Length)
-                throw new IndexOutOfRangeException();
-
             int index = bitIndex / BitsPerElement;
             uint mask = (uint)(1 << (bitIndex % BitsPerElement));
             if (value)

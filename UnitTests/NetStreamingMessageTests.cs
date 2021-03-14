@@ -14,7 +14,7 @@ namespace UnitTests
 
             string appId = "NetStreamingMessages";
             int port = 20002;
-            int clientCount = 12;
+            int clientCount = 8;
 
             var serverThread = new Thread(() =>
             {
@@ -34,8 +34,7 @@ namespace UnitTests
                     {
                         Console.WriteLine("Server Incoming: " +
                             server.Statistics.IncomingRecycled + " / " +
-                            server.Statistics.IncomingAllocated + " # " +
-                            server._incomingMessagePool.Count);
+                            server.Statistics.IncomingAllocated);
 
                         Thread.Sleep(500);
                     }
@@ -122,7 +121,7 @@ namespace UnitTests
                     }
 
                     NetOutgoingMessage outMsg = client.CreateMessage();
-                    outMsg.WritePadBytes(1024 * 1024 * 8);
+                    outMsg.WritePadBytes(1024 * 1024 * 16);
                     connection.SendMessage(outMsg, NetDeliveryMethod.ReliableOrdered, 1);
 
                     bool stop = false;

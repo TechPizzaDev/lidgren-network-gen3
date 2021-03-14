@@ -6,6 +6,7 @@ using System.Globalization;
 using System.Diagnostics;
 using System.Net.NetworkInformation;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 
 namespace Lidgren.Network
 {
@@ -318,7 +319,7 @@ namespace Lidgren.Network
         // TODO: replace hex methods with fast .NET ones in future
 
         public static int GetHexCharCount(int byteCount)
-        {   
+        {
             return byteCount * 2;
         }
 
@@ -484,23 +485,18 @@ namespace Lidgren.Network
         /// </summary>
         public static int GetWindowSize(NetDeliveryMethod method)
         {
-            switch (method)
+            return method switch
             {
-                case NetDeliveryMethod.Unknown:
-                    return 0;
+                NetDeliveryMethod.Unreliable or
+                NetDeliveryMethod.UnreliableSequenced => NetConstants.UnreliableWindowSize,
 
-                case NetDeliveryMethod.Unreliable:
-                case NetDeliveryMethod.UnreliableSequenced:
-                    return NetConstants.UnreliableWindowSize;
+                NetDeliveryMethod.ReliableOrdered => NetConstants.ReliableOrderedWindowSize,
+                NetDeliveryMethod.ReliableSequenced => NetConstants.ReliableSequencedWindowSize,
+                NetDeliveryMethod.ReliableUnordered => NetConstants.ReliableUnorderedWindowSize,
 
-                case NetDeliveryMethod.ReliableOrdered:
-                    return NetConstants.ReliableOrderedWindowSize;
-
-                case NetDeliveryMethod.ReliableSequenced:
-                case NetDeliveryMethod.ReliableUnordered:
-                default:
-                    return NetConstants.DefaultWindowSize;
-            }
+                NetDeliveryMethod.Unknown => 0,
+                _ => NetConstants.DefaultWindowSize,
+            };
         }
 
         internal static NetDeliveryMethod GetDeliveryMethod(NetMessageType mtp)
@@ -538,6 +534,17 @@ namespace Lidgren.Network
             if (endPoint.AddressFamily == AddressFamily.InterNetwork)
                 return new IPEndPoint(endPoint.Address.MapToIPv6(), endPoint.Port);
             return endPoint;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static int FastMod(int value, int denominator)
+        {
+            return value & (denominator - 1);
+        }
+
+        internal static bool IsPowerOfTwo(ulong value)
+        {
+            return (value != 0) && ((value & (value - 1)) == 0);
         }
     }
 }
