@@ -411,13 +411,15 @@ namespace Lidgren.Network
             // update now
             now = NetTime.Now;
 
+            byte[] buffer = _receiveBuffer;
+
             while (Socket.Available > 0)
             {
                 int bytesReceived = 0;
                 try
                 {
                     bytesReceived = Socket.ReceiveFrom(
-                        _receiveBuffer, 0, _receiveBuffer.Length, SocketFlags.None, ref _senderRemote);
+                        buffer, 0, buffer.Length, SocketFlags.None, ref _senderRemote);
                 }
                 catch (SocketException sx)
                 {
@@ -449,7 +451,7 @@ namespace Lidgren.Network
 
                 if (UPnP != null && UPnP.Status == UPnPStatus.Discovering)
                 {
-                    if (SetupUpnp(UPnP, now, _receiveBuffer.AsSpan(0, bytesReceived)))
+                    if (SetupUpnp(UPnP, now, buffer.AsSpan(0, bytesReceived)))
                         return;
                 }
 
@@ -472,17 +474,17 @@ namespace Lidgren.Network
 
                     numMessages++;
 
-                    var type = (NetMessageType)_receiveBuffer[offset++];
+                    var type = (NetMessageType)buffer[offset++];
 
-                    byte low = _receiveBuffer[offset++];
-                    byte high = _receiveBuffer[offset++];
+                    byte low = buffer[offset++];
+                    byte high = buffer[offset++];
 
                     bool isFragment = (low & 1) == 1;
                     ushort sequenceNumber = (ushort)((low >> 1) | (high << 7));
 
                     numFragments++;
 
-                    ushort payloadBitLength = (ushort)(_receiveBuffer[offset++] | (_receiveBuffer[offset++] << 8));
+                    ushort payloadBitLength = (ushort)(buffer[offset++] | (buffer[offset++] << 8));
                     int payloadByteLength = NetBitWriter.BytesForBits(payloadBitLength);
 
                     if (bytesReceived - offset < payloadByteLength)
@@ -508,7 +510,7 @@ namespace Lidgren.Network
                                 !Configuration.IsMessageTypeEnabled(NetIncomingMessageType.UnconnectedData))
                                 return; // dropping unconnected message since it's not enabled
 
-                            ReadOnlySpan<byte> span = _receiveBuffer.AsSpan(offset, payloadByteLength);
+                            ReadOnlySpan<byte> span = buffer.AsSpan(offset, payloadByteLength);
 
                             if (sender == null ||
                                 type == NetMessageType.Unconnected)

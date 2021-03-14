@@ -12,18 +12,17 @@ namespace Lidgren.Network
         public const int ReliableUnorderedChannels = 1;
         public const int ReliableSequencedChannels = 32;
         public const int ReliableOrderedChannels = 32;
-        public const int StreamChannels = 32;
 
         public const int TotalChannels =
             UnreliableChannels + UnreliableSequencedChannels +
-            ReliableUnorderedChannels + ReliableSequencedChannels + ReliableOrderedChannels +
-            StreamChannels;
+            ReliableUnorderedChannels + ReliableSequencedChannels + ReliableOrderedChannels;
 
-        public const int SequenceNumbers = 1024;
+        // The real amount is 32k, but that would realistically just waste memory.
+        public const int SequenceNumbers = 1024 * 4;
 
         public const int HeaderSize = 5;
 
-        public const int DefaultWindowSize = 256;
+        public const int DefaultWindowSize = 512;
         public const int UnreliableWindowSize = DefaultWindowSize * 2;
         public const int ReliableOrderedWindowSize = DefaultWindowSize;
         public const int ReliableSequencedWindowSize = DefaultWindowSize;
