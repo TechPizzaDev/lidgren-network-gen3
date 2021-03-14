@@ -1,7 +1,7 @@
 ﻿
 namespace Lidgren.Network
 {
-	internal sealed class NetReliableUnorderedReceiver : NetReceiverChannel
+    internal sealed class NetReliableUnorderedReceiver : NetReceiverChannel
 	{
 		private int _windowStart;
 		private int _windowSize;
@@ -31,10 +31,7 @@ namespace Lidgren.Network
 			{
 				// Log("Received message #" + message.SequenceNumber + " right on time");
 
-				//
 				// excellent, right on time
-				//
-				//m_peer.LogVerbose("Received RIGHT-ON-TIME " + message);
 
 				AdvanceWindow();
 				Peer.ReleaseMessage(message);
@@ -44,16 +41,6 @@ namespace Lidgren.Network
 
 				while (_earlyReceived[nextSeqNr % _windowSize])
 				{
-					//message = m_withheldMessages[nextSeqNr % m_windowSize];
-					//NetException.Assert(message != null);
-
-					// remove it from withheld messages
-					//m_withheldMessages[nextSeqNr % m_windowSize] = null;
-
-					//m_peer.LogVerbose("Releasing withheld message #" + message);
-
-					//m_peer.ReleaseMessage(message);
-
 					AdvanceWindow();
 					nextSeqNr++;
 				}
@@ -77,8 +64,6 @@ namespace Lidgren.Network
 			}
 
 			_earlyReceived.Set(message.SequenceNumber % _windowSize, true);
-			//m_peer.LogVerbose("Received " + message + " WITHHOLDING, waiting for " + m_windowStart);
-			//m_withheldMessages[message.m_sequenceNumber % m_windowSize] = message;
 
 			Peer.ReleaseMessage(message);
 		}

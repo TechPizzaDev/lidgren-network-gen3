@@ -1,12 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.Globalization;
 using System.Linq;
 using System.Reflection;
 
 namespace Lidgren.Network
 {
+    [Obsolete("This class will soon be replaced with Source Generators.")]
     public static class BitBufferReflectionExtensions
     {
         // TODO: optimize reflection (generic compiled expressions?)

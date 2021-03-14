@@ -48,12 +48,11 @@ namespace Lidgren.Network
 
             Statistics.PacketSent(byteCount, numMessages);
 
-            // simulate latency
-            TimeSpan m = Configuration._minimumOneWayLatency;
-            TimeSpan r = Configuration._randomOneWayLatency;
-            if (m == TimeSpan.Zero && r == TimeSpan.Zero)
+            if (Configuration._minimumOneWayLatency == TimeSpan.Zero &&
+                Configuration._randomOneWayLatency == TimeSpan.Zero)
             {
                 // no latency simulation
+
                 //LogVerbose("Sending packet " + numBytes + " bytes");
                 var (wasSent, connectionReset) = ActuallySendPacket(_sendBuffer, byteCount, target);
                 // TODO: handle 'wasSent == false' better?
@@ -66,17 +65,18 @@ namespace Lidgren.Network
                 return connectionReset;
             }
 
-            int num = 1;
+            // simulate latency
+            int copyCount = 1;
             if (Configuration._duplicates > 0f && MWCRandom.Global.NextSingle() < Configuration._duplicates)
-                num++;
+                copyCount++;
 
             TimeSpan now = NetTime.Now;
-            for (int i = 0; i < num; i++)
+            for (int i = 0; i < copyCount; i++)
             {
                 TimeSpan delay = Configuration._minimumOneWayLatency +
                     (MWCRandom.Global.NextSingle() * Configuration._randomOneWayLatency);
 
-                byte[] data = new byte[byteCount]; // TODO: ArrayPool?
+                byte[] data = new byte[byteCount];
                 Buffer.BlockCopy(_sendBuffer, 0, data, 0, byteCount);
 
                 // Enqueue delayed packet

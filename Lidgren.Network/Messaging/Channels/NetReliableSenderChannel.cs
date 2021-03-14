@@ -1,7 +1,5 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Threading;
-using System.Threading.Tasks;
 
 namespace Lidgren.Network
 {
@@ -63,9 +61,6 @@ namespace Lidgren.Network
         // call this regularely
         public override void SendQueuedMessages(TimeSpan now)
         {
-            //
-            // resends
-            //
             TimeSpan resendDelay = ResendDelay;
 
             for (int i = 0; i < StoredMessages.Length; i++)
@@ -77,19 +72,6 @@ namespace Lidgren.Network
                 TimeSpan t = storedMessage.LastSent;
                 if (t > TimeSpan.Zero && (now - t) > resendDelay)
                 {
-                    // deduce sequence number
-                    /*
-                    int startSlot = m_windowStart % m_windowSize;
-                    int seqNr = m_windowStart;
-                    while (startSlot != i)
-                    {
-                        startSlot--;
-                        if (startSlot < 0)
-                            startSlot = m_windowSize - 1;
-                        seqNr--;
-                    }
-                    */
-
                     //m_connection.m_peer.LogVerbose(
                     //    "Resending due to delay #" + storedMessage.SequenceNumber + " " + om.ToString());
                     _connection.Statistics.MessageResent(MessageResendReason.Delay);
@@ -104,8 +86,6 @@ namespace Lidgren.Network
             int num = GetAllowedSends();
             if (num > 0)
             {
-                // queued sends
-
                 while (num > 0 && QueuedSends.TryDequeue(out NetOutgoingMessage? message))
                 {
                     ExecuteSend(now, message);
@@ -137,7 +117,7 @@ namespace Lidgren.Network
 #if DEBUG
             if (storedMessage.Message == null)
                 throw new LidgrenException(
-                    "m_storedMessages[" + storeIndex + "].Message is null; " +
+                    "_storedMessages[" + storeIndex + "].Message is null; " +
                     "sent " + storedMessage.NumSent + " times, " +
                     "last time " + (NetTime.Now - storedMessage.LastSent) + " seconds ago");
 #else
@@ -207,7 +187,7 @@ namespace Lidgren.Network
                 if (!_receivedAcks[seqNr])
                     _receivedAcks[seqNr] = true;
                 //else
-                // we've already destored/been acked for this message
+                //   we've already destored/been acked for this message
             }
             else if (sendRelate > 0)
             {
@@ -247,9 +227,7 @@ namespace Lidgren.Network
                             _connection.QueueSendMessage(storedMessage.Message, rnr);
                         }
                         //else
-                        //{
-                        //    // already resent recently
-                        //}
+                        //    already resent recently
                     }
                 }
 

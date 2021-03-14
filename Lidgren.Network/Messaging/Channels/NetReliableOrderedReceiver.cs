@@ -33,12 +33,8 @@ namespace Lidgren.Network
             if (relate == 0)
             {
                 // Log("Received message #" + message.SequenceNumber + " right on time");
-
-                //
+                
                 // excellent, right on time
-                //
-                //m_peer.LogVerbose("Received RIGHT-ON-TIME " + message);
-
 
                 int nextSeqNr = (message.SequenceNumber + 1) % NetConstants.SequenceNumbers;
                 nextSeqNr %= _windowSize;

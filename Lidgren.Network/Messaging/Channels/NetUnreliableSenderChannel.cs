@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Threading;
-using System.Threading.Tasks;
 
 namespace Lidgren.Network
 {
@@ -45,6 +44,7 @@ namespace Lidgren.Network
         {
             int queueLen = QueuedSends.Count + 1;
             int left = GetAllowedSends();
+
             if (queueLen > left ||
                 (message.ByteLength > _connection.CurrentMTU &&
                 _connection._peerConfiguration.UnreliableSizeBehaviour == NetUnreliableSizeBehaviour.DropAboveMTU))
