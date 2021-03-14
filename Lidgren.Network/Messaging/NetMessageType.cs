@@ -1,7 +1,7 @@
 ﻿
 namespace Lidgren.Network
 {
-    internal enum NetMessageType : byte
+    public enum NetMessageType : byte
     {
         Unconnected = 0,
 
@@ -108,6 +108,7 @@ namespace Lidgren.Network
         UserReliableOrdered31 = 97,
         UserReliableOrdered32 = 98,
 
+        /*
         UserNetStream1 = 99,
         UserNetStream2 = 100,
         UserNetStream3 = 101,
@@ -140,6 +141,7 @@ namespace Lidgren.Network
         UserNetStream30 = 128,
         UserNetStream31 = 129,
         UserNetStream32 = 130,
+        */
 
         LibraryError = 131,
         Ping = 132, // used for RTT calculation

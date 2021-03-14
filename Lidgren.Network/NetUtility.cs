@@ -496,9 +496,6 @@ namespace Lidgren.Network
                 case NetDeliveryMethod.ReliableOrdered:
                     return NetConstants.ReliableOrderedWindowSize;
 
-                case NetDeliveryMethod.Stream:
-                    return NetConstants.StreamWindowSize;
-
                 case NetDeliveryMethod.ReliableSequenced:
                 case NetDeliveryMethod.ReliableUnordered:
                 default:
@@ -508,9 +505,7 @@ namespace Lidgren.Network
 
         internal static NetDeliveryMethod GetDeliveryMethod(NetMessageType mtp)
         {
-            if (mtp >= NetMessageType.UserNetStream1)
-                return NetDeliveryMethod.Stream;
-            else if (mtp >= NetMessageType.UserReliableOrdered1)
+            if (mtp >= NetMessageType.UserReliableOrdered1)
                 return NetDeliveryMethod.ReliableOrdered;
             else if (mtp >= NetMessageType.UserReliableSequenced1)
                 return NetDeliveryMethod.ReliableSequenced;

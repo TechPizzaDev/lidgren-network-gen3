@@ -79,11 +79,6 @@ namespace Lidgren.Network
 		/// <summary>
 		/// A roundtrip was measured and <see cref="NetConnection.AverageRoundtripTime"/> was updated.
 		/// </summary>
-		ConnectionLatencyUpdated = 1 << 12, // Seconds as a TimeSpan,
-
-		/// <summary>
-		/// Represents various data and operations sent by a <see cref="NetStream"/>. 
-		/// </summary>
-		StreamMessage = 1 << 13
+		ConnectionLatencyUpdated = 1 << 12, // Seconds as a TimeSpan
 	}
 }

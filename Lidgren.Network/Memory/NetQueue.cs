@@ -283,7 +283,7 @@ namespace Lidgren.Network
         /// </summary>
         public T Peek(int offset)
         {
-            if (TryPeek(offset, out T value))
+            if (TryPeek(offset, out T? value))
                 return value;
             return default!;
         }
@@ -293,9 +293,6 @@ namespace Lidgren.Network
         /// </summary>
         public bool Contains(T item, IEqualityComparer<T>? comparer)
         {
-            if (comparer == null)
-                comparer = EqualityComparer<T>.Default;
-
             Lock.EnterReadLock();
             try
             {
@@ -304,10 +301,21 @@ namespace Lidgren.Network
                 while (left > 0)
                 {
                     Span<T> slice = _items.AsSpan(offset, Math.Min(left, _items.Length - offset));
-                    foreach (T other in slice)
+                    if (comparer == null)
                     {
-                        if (comparer.Equals(item, other))
-                            return true;
+                        foreach (T other in slice)
+                        {
+                            if (EqualityComparer<T>.Default.Equals(item, other))
+                                return true;
+                        }
+                    }
+                    else
+                    {
+                        foreach (T other in slice)
+                        {
+                            if (comparer.Equals(item, other))
+                                return true;
+                        }
                     }
 
                     left -= slice.Length;

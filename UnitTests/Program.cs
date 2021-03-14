@@ -52,7 +52,9 @@ namespace UnitTests
 
             MiscTests.Run();
 
-            NetStreamTests.Run();
+            NetStreamingMessageTest.Run();
+
+            //NetStreamTests.Run();
 
             //EncryptionTests.Run(peer);
 

@@ -7,7 +7,7 @@ namespace Lidgren.Network
 	public enum NetSendResult
 	{
 		/// <summary>
-		/// Message failed to enqueue because there is no connection.
+		/// Failed to enqueue message because there is no connection.
 		/// </summary>
 		FailedNotConnected = 0,
 
@@ -17,17 +17,17 @@ namespace Lidgren.Network
 		NoRecipients = 1,
 
 		/// <summary>
-		/// Message was immediately sent.
+		/// Message is being sent by the peer.
 		/// </summary>
 		Sent = 2,
 
 		/// <summary>
-		/// Message was queued for delivery.
+		/// Message is queued for sending.
 		/// </summary>
 		Queued = 3,
 
 		/// <summary>
-		/// Message was dropped immediately since too many message were queued.
+		/// Message was discarded and an error message was logged.
 		/// </summary>
 		Dropped = 4
 	}

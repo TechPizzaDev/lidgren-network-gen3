@@ -23,12 +23,12 @@ namespace Lidgren.Network
             _windowStart = (_windowStart + 1) % NetConstants.SequenceNumbers;
         }
 
-        public override void ReceiveMessage(NetIncomingMessage message)
+        public override void ReceiveMessage(in NetMessageView message)
         {
             int relate = NetUtility.RelativeSequenceNumber(message.SequenceNumber, _windowStart);
 
             // ack no matter what
-            Connection.QueueAck(message._baseMessageType, message.SequenceNumber);
+            Connection.QueueAck(message.BaseMessageType, message.SequenceNumber);
 
             if (relate == 0)
             {
@@ -49,8 +49,8 @@ namespace Lidgren.Network
                 // release withheld messages
                 while (_earlyReceived[nextSeqNr])
                 {
-                    message = WithheldMessages[nextSeqNr]!;
-                    LidgrenException.Assert(message != null);
+                    var withheldMessage = WithheldMessages[nextSeqNr]!;
+                    LidgrenException.Assert(withheldMessage != null);
 
                     // remove it from withheld messages
                     WithheldMessages[nextSeqNr] = default!;
@@ -59,8 +59,8 @@ namespace Lidgren.Network
                     nextSeqNr++;
                     nextSeqNr %= _windowSize;
 
-                    Peer.LogVerbose("Releasing withheld message #" + message);
-                    Peer.ReleaseMessage(message);
+                    Peer.LogVerbose("Releasing withheld message #" + withheldMessage);
+                    Peer.ReleaseMessage(withheldMessage);
                 }
                 return;
             }
@@ -68,7 +68,6 @@ namespace Lidgren.Network
             if (relate < 0)
             {
                 Peer.LogVerbose("Received message #" + message.SequenceNumber + " DROPPING DUPLICATE");
-                Peer.Recycle(message);
                 // duplicate
                 return;
             }
@@ -77,14 +76,13 @@ namespace Lidgren.Network
             if (relate > _windowSize)
             {
                 // too early message!
-                Peer.LogDebug("Received " + message + " TOO EARLY! Expected " + _windowStart);
-                Peer.Recycle(message);
+                Peer.LogDebug("Received " + message.ToString() + " TOO EARLY! Expected " + _windowStart);
                 return;
             }
 
             _earlyReceived.Set(message.SequenceNumber % _windowSize, true);
-            Peer.LogVerbose("Received " + message + " WITHHOLDING, waiting for " + _windowStart);
-            WithheldMessages[message.SequenceNumber % _windowSize] = message;
+            Peer.LogVerbose("Received " + message.ToString() + " WITHHOLDING, waiting for " + _windowStart);
+            WithheldMessages[message.SequenceNumber % _windowSize] = message.ToIncomingMessage(Peer);
         }
     }
 }

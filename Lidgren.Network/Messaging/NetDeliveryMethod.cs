@@ -1,4 +1,6 @@
 ﻿
+using System;
+
 namespace Lidgren.Network
 {
 	/// <summary>
@@ -38,10 +40,7 @@ namespace Lidgren.Network
 		/// </summary>
 		ReliableOrdered = NetMessageType.UserReliableOrdered1,
 
-
-		/// <summary>
-		/// Reliable, ordered delivery. Reserved for <see cref="NetStream"/>.
-		/// </summary>
-		Stream = NetMessageType.UserNetStream1,
+		[Obsolete]
+		Stream = 99,
 	}
 }

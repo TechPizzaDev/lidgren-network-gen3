@@ -27,7 +27,6 @@ namespace Lidgren.Network
         public const int UnreliableWindowSize = DefaultWindowSize * 2;
         public const int ReliableOrderedWindowSize = DefaultWindowSize;
         public const int ReliableSequencedWindowSize = DefaultWindowSize;
-        public const int StreamWindowSize = DefaultWindowSize;
 
         public const int MaxFragmentationGroups = ushort.MaxValue - 1;
         public const int UnfragmentedMessageHeaderSize = 5;
@@ -63,11 +62,6 @@ namespace Lidgren.Network
 
                 case NetDeliveryMethod.ReliableOrdered:
                     if (sequenceChannel >= ReliableOrderedChannels)
-                        throw new ArgumentOutOfRangeException(channelParamName, sequenceChannel, null);
-                    break;
-
-                case NetDeliveryMethod.Stream:
-                    if (sequenceChannel >= StreamChannels)
                         throw new ArgumentOutOfRangeException(channelParamName, sequenceChannel, null);
                     break;
 

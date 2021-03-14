@@ -57,7 +57,7 @@ namespace Lidgren.Network
                 _connection._peerConfiguration.UnreliableSizeBehaviour == NetUnreliableSizeBehaviour.IgnoreMTU)
             {
                 _connection.Peer.LogError(string.Format(
-                    "Unreliable message size exceeded {0} ({1} bits)",
+                    "Unreliable message size exceeded {0} bits ({1})",
                     ushort.MaxValue, message.BitLength));
                 return NetSendResult.Dropped;
             }
@@ -70,15 +70,13 @@ namespace Lidgren.Network
         public override void SendQueuedMessages(TimeSpan now)
         {
             int num = GetAllowedSends();
-            if (num > 0)
+            while (num > 0)
             {
-                // queued sends
-                while (QueuedSends.Count > 0 && num > 0)
-                {
-                    if (QueuedSends.TryDequeue(out NetOutgoingMessage? om))
-                        ExecuteSend(om);
-                    num--;
-                }
+                if (!QueuedSends.TryDequeue(out NetOutgoingMessage? om))
+                    break;
+
+                ExecuteSend(om);
+                num--;
             }
         }
 

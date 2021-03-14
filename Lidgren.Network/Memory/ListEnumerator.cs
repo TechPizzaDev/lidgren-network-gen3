@@ -11,11 +11,14 @@ namespace Lidgren.Network
     /// <typeparam name="T"></typeparam>
     internal struct ListEnumerator<T> : IEnumerator<T>, IEnumerable<T>
     {
-        private int _index;
+        private delegate bool MoveNextDelegate(ref ListEnumerator<T> enumerator);
 
-        private IEnumerator<T> _enumerator;
-        private IList<T> _list;
-        private IReadOnlyList<T> _roList;
+        private int _index;
+        private MoveNextDelegate _moveDelegate;
+
+        private IEnumerator<T>? _enumerator;
+        private IList<T>? _list;
+        private IReadOnlyList<T>? _roList;
 
         public T Current { get; private set; }
         object IEnumerator.Current => Current!;
@@ -23,49 +26,62 @@ namespace Lidgren.Network
         public ListEnumerator(IEnumerator<T> enumerator) : this()
         {
             _enumerator = enumerator ?? throw new ArgumentNullException(nameof(enumerator));
+            _moveDelegate = MoveNextEnumerator;
             Current = default!;
         }
 
         public ListEnumerator(IList<T> list) : this()
         {
             _list = list ?? throw new ArgumentNullException(nameof(list));
+            _moveDelegate = MoveNextList;
             Current = default!;
         }
 
         public ListEnumerator(IReadOnlyList<T> list) : this()
         {
             _roList = list ?? throw new ArgumentNullException(nameof(list));
+            _moveDelegate = MoveNextROList;
             Current = default!;
+        }
+
+        private static bool MoveNextList(ref ListEnumerator<T> enumerator)
+        {
+            if ((uint)enumerator._index < (uint)enumerator._list!.Count)
+            {
+                enumerator.Current = enumerator._list[enumerator._index++];
+                return true;
+            }
+            enumerator.Current = default!;
+            return false;
+        }
+
+        private static bool MoveNextROList(ref ListEnumerator<T> enumerator)
+        {
+            if ((uint)enumerator._index < (uint)enumerator._roList!.Count)
+            {
+                enumerator.Current = enumerator._roList[enumerator._index++];
+                return true;
+            }
+
+            enumerator.Current = default!;
+            return false;
+        }
+
+        private static bool MoveNextEnumerator(ref ListEnumerator<T> enumerator)
+        {
+            if (enumerator._enumerator!.MoveNext())
+            {
+                enumerator.Current = enumerator._enumerator.Current;
+                return true;
+            }
+
+            enumerator.Current = default!;
+            return false;
         }
 
         public bool MoveNext()
         {
-            if (_list != null)
-            {
-                if ((uint)_index < (uint)_list.Count)
-                {
-                    Current = _list[_index++];
-                    return true;
-                }
-            }
-            else if (_roList != null)
-            {
-                if ((uint)_index < (uint)_roList.Count)
-                {
-                    Current = _roList[_index++];
-                    return true;
-                }
-            }
-            else if (_enumerator != null)
-            {
-                if (_enumerator.MoveNext())
-                {
-                    Current = _enumerator.Current;
-                    return true;
-                }
-            }
-            Current = default!;
-            return false;
+            return _moveDelegate.Invoke(ref this);
         }
 
         public void Dispose()

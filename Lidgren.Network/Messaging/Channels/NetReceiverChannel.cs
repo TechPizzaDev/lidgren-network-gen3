@@ -12,6 +12,6 @@ namespace Lidgren.Network
 			Connection = connection ?? throw new ArgumentNullException(nameof(connection));
 		}
 
-		public abstract void ReceiveMessage(NetIncomingMessage message);
+		public abstract void ReceiveMessage(in NetMessageView message);
 	}
 }

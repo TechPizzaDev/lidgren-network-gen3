@@ -17,14 +17,14 @@ namespace Lidgren.Network
 			_windowStart = (_windowStart + 1) % NetConstants.SequenceNumbers;
 		}
 
-		public override void ReceiveMessage(NetIncomingMessage message)
+		public override void ReceiveMessage(in NetMessageView message)
 		{
 			int nr = message.SequenceNumber;
 
 			int relate = NetUtility.RelativeSequenceNumber(nr, _windowStart);
 
 			// ack no matter what
-			Connection.QueueAck(message._baseMessageType, nr);
+			Connection.QueueAck(message.BaseMessageType, nr);
 
 			if (relate == 0)
 			{
@@ -49,7 +49,7 @@ namespace Lidgren.Network
 			if (relate > _windowSize)
 			{
 				// too early message!
-				Peer.LogDebug("Received " + message + " TOO EARLY! Expected " + _windowStart);
+				Peer.LogDebug("Received " + message.ToString() + " TOO EARLY! Expected " + _windowStart);
 				return;
 			}
 

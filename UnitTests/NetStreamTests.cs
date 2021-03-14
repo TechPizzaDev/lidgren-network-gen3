@@ -94,6 +94,7 @@ namespace UnitTests
                             Console.WriteLine("Server Error: " + message.ReadString());
                             break;
 
+                        /*
                         case NetIncomingMessageType.StreamMessage:
                         {
                             var type = (NetStreamMessageType)message.ReadByte();
@@ -144,6 +145,7 @@ namespace UnitTests
                             }
                             break;
                         }
+                        */
 
                         default:
                             Console.WriteLine("Server " + message.MessageType);
@@ -242,6 +244,7 @@ namespace UnitTests
                                 Console.WriteLine("Client Error: " + message.ReadString());
                                 break;
 
+                            /*
                             case NetIncomingMessageType.StreamMessage:
                             {
                                 var type = (NetStreamMessageType)message.ReadByte();
@@ -250,6 +253,7 @@ namespace UnitTests
                                 Console.WriteLine("Client Stream: " + type);
                                 break;
                             }
+                            */
 
                             default:
                                 Console.WriteLine("Client " + message.MessageType);

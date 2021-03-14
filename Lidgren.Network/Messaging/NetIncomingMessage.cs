@@ -49,6 +49,18 @@ namespace Lidgren.Network
         /// </summary>
         public int SequenceChannel => (int)_baseMessageType - (int)DeliveryMethod;
 
+        public NetMessageView View => new(
+            MessageType,
+            _baseMessageType,
+            IsFragment,
+            ReceiveTime,
+            SequenceNumber,
+            SenderEndPoint,
+            SenderConnection,
+            this,
+            GetBuffer().AsSpan(0, ByteLength),
+            BitLength);
+
         public NetIncomingMessage(ArrayPool<byte> storagePool) : base(storagePool)
         {
         }

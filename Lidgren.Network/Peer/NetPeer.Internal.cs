@@ -72,10 +72,9 @@ namespace Lidgren.Network
             _receiveCallbacks.RemoveAll((x) => x.Callback.Equals(callback));
         }
 
-        internal void ReleaseMessage(NetIncomingMessage message)
+        internal void ReleaseMessage(in NetMessageView message)
         {
             LidgrenException.Assert(message.MessageType != NetIncomingMessageType.Error);
-            message.BitPosition = 0;
 
             if (message.IsFragment)
             {
@@ -83,7 +82,7 @@ namespace Lidgren.Network
                 return;
             }
 
-            ReleasedIncomingMessages.Enqueue(message);
+            ReleasedIncomingMessages.Enqueue(message.ToIncomingMessage(this));
             _messageReceivedEvent?.Set();
 
             if (_receiveCallbacks == null)
@@ -100,6 +99,12 @@ namespace Lidgren.Network
                     LogWarning("Receive callback exception:" + ex);
                 }
             }
+        }
+
+        internal void ReleaseMessage(NetIncomingMessage message)
+        {
+            message.BitPosition = 0;
+            ReleaseMessage(message.View);
         }
 
         private Socket BindSocket(bool reuseAddress)
@@ -367,7 +372,7 @@ namespace Lidgren.Network
                     // reverse-for so elements can be removed without breaking loop
                     for (int i = connections.Count; i-- > 0;)
                     {
-                        var conn = connections[i];
+                        NetConnection conn = connections[i];
                         conn.Heartbeat(now, _frameCounter);
 
                         if (conn.Status == NetConnectionStatus.Disconnected)
@@ -393,9 +398,6 @@ namespace Lidgren.Network
                 }
             }
 
-            //
-            // read from socket
-            //
             if (Socket == null)
                 return;
 
@@ -420,7 +422,7 @@ namespace Lidgren.Network
                     {
                         case SocketError.ConnectionReset:
                             // connection reset by peer, aka connection forcibly closed aka "ICMP port unreachable" 
-                            // we should shut down the connection; but m_senderRemote seemingly cannot be trusted,
+                            // we should shut down the connection; but _senderRemote seemingly cannot be trusted,
                             // so which connection should we shut down?!
                             // So, what to do?
                             LogWarning("ConnectionReset");
@@ -503,42 +505,40 @@ namespace Lidgren.Network
                                 !Configuration.IsMessageTypeEnabled(NetIncomingMessageType.UnconnectedData))
                                 return; // dropping unconnected message since it's not enabled
 
-                            var messageType = type >= NetMessageType.UserNetStream1
-                                ? NetIncomingMessageType.StreamMessage
-                                : NetIncomingMessageType.Data;
+                            ReadOnlySpan<byte> span = _receiveBuffer.AsSpan(offset, payloadByteLength);
 
-                            NetIncomingMessage msg = CreateIncomingMessage(messageType);
-                            msg._baseMessageType = type;
-                            msg.IsFragment = isFragment;
-                            msg.ReceiveTime = now;
-                            msg.SequenceNumber = sequenceNumber;
-                            msg.SenderConnection = sender;
-                            msg.SenderEndPoint = senderEndPoint;
-
-                            msg.Write(_receiveBuffer.AsSpan(offset, payloadByteLength));
-                            msg.BitLength = payloadBitLength;
-                            msg.BitPosition = 0;
-
-                            if (sender != null)
+                            if (sender == null ||
+                                type == NetMessageType.Unconnected)
                             {
-                                if (type == NetMessageType.Unconnected)
-                                {
-                                    // We're connected; but we can still send unconnected messages to this peer
-                                    msg.MessageType = NetIncomingMessageType.UnconnectedData;
-                                    ReleaseMessage(msg);
-                                }
-                                else
-                                {
-                                    // connected application (non-library) message
-                                    sender.ReceivedMessage(msg);
-                                }
+                                // We're connected; but we can still send unconnected messages to this peer
+                                NetMessageView view = new(
+                                    NetIncomingMessageType.UnconnectedData,
+                                    type,
+                                    isFragment,
+                                    now,
+                                    sequenceNumber,
+                                    senderEndPoint,
+                                    sender,
+                                    null,
+                                    span,
+                                    payloadBitLength);
+                                ReleaseMessage(view);
                             }
                             else
                             {
-                                // at this point we know the message type is enabled
-                                // unconnected application (non-library) message
-                                msg.MessageType = NetIncomingMessageType.UnconnectedData;
-                                ReleaseMessage(msg);
+                                // connected application (non-library) message
+                                NetMessageView view = new(
+                                    NetIncomingMessageType.Data,
+                                    type,
+                                    isFragment,
+                                    now,
+                                    sequenceNumber,
+                                    senderEndPoint,
+                                    sender,
+                                    null,
+                                    span,
+                                    payloadBitLength);
+                                sender.ReceivedMessage(view);
                             }
                         }
                     }
@@ -551,7 +551,6 @@ namespace Lidgren.Network
 
                 Statistics.PacketReceived(bytesReceived, numMessages, numFragments);
                 sender?.Statistics.PacketReceived(bytesReceived, numMessages, numFragments);
-
             }
         }
 
@@ -636,9 +635,7 @@ namespace Lidgren.Network
                 return;
             }
 
-            //
             // Library message from a completely unknown sender; lets just accept Connect
-            //
             switch (type)
             {
                 case NetMessageType.Discovery:
@@ -666,12 +663,11 @@ namespace Lidgren.Network
                             !hs.Value._connectionInitiator)
                             continue;
 
-                        //
                         // We are currently trying to connection to XX.XX.XX.XX:Y
                         // ... but we just received a ConnectResponse from XX.XX.XX.XX:Z
                         // Lets just assume the router decided to use this port instead
-                        //
-                        var hsconn = hs.Value;
+
+                        NetConnection hsconn = hs.Value;
                         ConnectionLookup.TryRemove(hs.Key, out _);
                         Handshakes.TryRemove(hs.Key, out _);
 

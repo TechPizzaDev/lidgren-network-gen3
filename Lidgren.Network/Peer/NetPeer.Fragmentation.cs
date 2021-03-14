@@ -98,9 +98,9 @@ namespace Lidgren.Network
             return retval;
         }
 
-        private void HandleReleasedFragment(NetIncomingMessage message)
+        private void HandleReleasedFragment(in NetMessageView message)
         {
-            if (message.SenderConnection == null)
+            if (message.Connection == null)
                 throw new ArgumentException("The message has no associated connection.", nameof(message));
 
             AssertIsOnLibraryThread();
@@ -108,7 +108,7 @@ namespace Lidgren.Network
             // read fragmentation header and combine fragments
             int headerOffset = 0;
             if(!NetFragmentationHelper.ReadHeader(
-                message.GetBuffer(),
+                message.Span,
                 ref headerOffset,
                 out int group,
                 out int totalBits,
@@ -119,7 +119,7 @@ namespace Lidgren.Network
                 return;
             }
 
-            LidgrenException.Assert(message.ByteLength > headerOffset);
+            LidgrenException.Assert(message.Span.Length > headerOffset);
             LidgrenException.Assert(group > 0);
             LidgrenException.Assert(totalBits > 0);
             LidgrenException.Assert(chunkByteSize > 0);
@@ -137,10 +137,10 @@ namespace Lidgren.Network
                 return;
             }
 
-            if (!_receivedFragmentGroups.TryGetValue(message.SenderConnection, out var groups))
+            if (!_receivedFragmentGroups.TryGetValue(message.Connection, out var groups))
             {
                 groups = new Dictionary<int, ReceivedFragmentGroup>();
-                _receivedFragmentGroups.Add(message.SenderConnection, groups);
+                _receivedFragmentGroups.Add(message.Connection, groups);
             }
 
             if (!groups.TryGetValue(group, out ReceivedFragmentGroup info))
@@ -156,7 +156,7 @@ namespace Lidgren.Network
 
             // copy to data
             int offset = chunkNumber * chunkByteSize;
-            message.GetBuffer().AsSpan()[headerOffset..message.ByteLength].CopyTo(info.Data.AsSpan(offset));
+            message.Span[headerOffset..].CopyTo(info.Data.AsSpan(offset));
 
             int chunkCount = receivedChunks.PopCount;
 
@@ -169,13 +169,10 @@ namespace Lidgren.Network
             if (chunkCount == totalChunkCount)
             {
                 // Done! Transform this incoming message
-                message.BitLength = 0;
-                message.TrimExcess();
-
-                message.SetBuffer(info.Data);
-                message.BitLength = totalBits;
-
-                message.IsFragment = false;
+                var incomingMessage = message.ToIncomingMessage(this);             
+                incomingMessage.SetBuffer(info.Data);
+                incomingMessage.BitLength = totalBits;
+                incomingMessage.IsFragment = false;
 
                 LogVerbose(
                     "Fragment group #" + group + " fully received in " +
@@ -183,12 +180,7 @@ namespace Lidgren.Network
 
                 groups.Remove(group);
 
-                ReleaseMessage(message);
-            }
-            else
-            {
-                // data has been copied; recycle this incoming message
-                Recycle(message);
+                ReleaseMessage(incomingMessage);
             }
             return;
         }

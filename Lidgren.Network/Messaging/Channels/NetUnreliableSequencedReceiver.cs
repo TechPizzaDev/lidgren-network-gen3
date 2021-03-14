@@ -10,12 +10,12 @@ namespace Lidgren.Network
 		{
 		}
 
-		public override void ReceiveMessage(NetIncomingMessage message)
+		public override void ReceiveMessage(in NetMessageView message)
 		{
 			int nr = message.SequenceNumber;
 
 			// ack no matter what
-			Connection.QueueAck(message._baseMessageType, nr);
+			Connection.QueueAck(message.BaseMessageType, nr);
 
 			int relate = NetUtility.RelativeSequenceNumber(nr, _lastReceivedSequenceNumber + 1);
 			if (relate < 0)

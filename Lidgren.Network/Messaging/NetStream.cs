@@ -118,7 +118,8 @@ namespace Lidgren.Network
             return Math.Max(1, mtu - 1 - NetConstants.HeaderSize);
         }
 
-        internal void OnDataMessage(NetIncomingMessage buffer)
+        // TODO: hide
+        public void OnDataMessage(NetIncomingMessage buffer)
         {
             if (buffer == null)
                 throw new ArgumentNullException(nameof(buffer));
@@ -129,7 +130,8 @@ namespace Lidgren.Network
             _readEvent.Set();
         }
 
-        internal void OnCloseMessage(NetIncomingMessage buffer)
+        // TODO: hide
+        public void OnCloseMessage(NetIncomingMessage buffer)
         {
             _closed = true;
             _readEvent.Set();

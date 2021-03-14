@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Net;
 using System.Diagnostics;
-using System.Threading.Tasks;
 
 namespace Lidgren.Network
 {
@@ -27,7 +26,6 @@ namespace Lidgren.Network
         internal NetPeerConfiguration _peerConfiguration;
         internal NetSenderChannel?[] _sendChannels;
         internal NetReceiverChannel?[] _receiveChannels;
-        internal NetStream?[] _openStreams;
         internal NetQueue<(NetMessageType Type, int SequenceNumber)> _queuedOutgoingAcks;
         internal NetQueue<(NetMessageType Type, int SequenceNumber)> _queuedIncomingAcks;
 
@@ -91,7 +89,6 @@ namespace Lidgren.Network
             RemoteEndPoint = remoteEndPoint;
             _sendChannels = new NetSenderChannel[NetConstants.TotalChannels];
             _receiveChannels = new NetReceiverChannel[NetConstants.TotalChannels];
-            _openStreams = new NetStream?[NetConstants.StreamChannels];
             _queuedOutgoingAcks = new NetQueue<(NetMessageType, int)>(16);
             _queuedIncomingAcks = new NetQueue<(NetMessageType, int)>(16);
             Statistics = new NetConnectionStatistics(this);
@@ -149,9 +146,6 @@ namespace Lidgren.Network
             {
                 if (now > _timeoutDeadline)
                 {
-                    //
-                    // connection timed out
-                    //
                     Peer.LogVerbose("Connection timed out at " + now + " deadline was " + _timeoutDeadline);
                     ExecuteDisconnect("Connection timed out", true);
                     return;
@@ -182,9 +176,7 @@ namespace Lidgren.Network
                 byte[] sendBuffer = Peer._sendBuffer;
                 int mtu = CurrentMTU;
 
-                //
                 // send ack messages
-                //
                 while (_queuedOutgoingAcks.Count > 0)
                 {
                     int acks = (mtu - (_sendBufferWritePtr + 5)) / 3; // 3 bytes per actual ack
@@ -226,9 +218,7 @@ namespace Lidgren.Network
                     }
                 }
 
-                //
                 // Parse incoming acks (may trigger resends)
-                //
                 while (_queuedIncomingAcks.TryDequeue(out var incAck))
                 {
                     //m_peer.LogVerbose("Received ack for " + acktp + "#" + seqNr);
@@ -242,9 +232,7 @@ namespace Lidgren.Network
                 }
             }
 
-            //
             // send queued messages
-            //
             if (Peer._executeFlushSendQueue)
             {
                 // Reverse order so reliable messages are sent first
@@ -258,9 +246,7 @@ namespace Lidgren.Network
                 }
             }
 
-            //
             // Put on wire data has been written to send buffer but not yet sent
-            //
             if (_sendBufferWritePtr > 0)
             {
                 LidgrenException.Assert(_sendBufferWritePtr > 0 && _sendBufferNumMessages > 0);
@@ -339,8 +325,6 @@ namespace Lidgren.Network
                 Peer.ThrowOrLog("Reliable message too large! Fragmentation failure?");
 
             NetSendResult sendResult = chan.Enqueue(message);
-            //if (sendResult == NetSendResult.Sent && !_peerConfiguration.m_autoFlushSendQueue)
-            //	sendResult = NetSendResult.Queued; // queued since we're not autoflushing
             return sendResult;
         }
 
@@ -369,8 +353,7 @@ namespace Lidgren.Network
 
                         NetDeliveryMethod.ReliableUnordered or
                         NetDeliveryMethod.ReliableSequenced or
-                        NetDeliveryMethod.ReliableOrdered or
-                        NetDeliveryMethod.Stream =>
+                        NetDeliveryMethod.ReliableOrdered =>
                         new NetReliableSenderChannel(this, NetUtility.GetWindowSize(method)),
 
                         _ => throw new ArgumentOutOfRangeException(nameof(type)),
@@ -469,11 +452,11 @@ namespace Lidgren.Network
             }
         }
 
-        internal void ReceivedMessage(NetIncomingMessage message)
+        internal void ReceivedMessage(in NetMessageView message)
         {
             Peer.AssertIsOnLibraryThread();
 
-            NetMessageType type = message._baseMessageType;
+            NetMessageType type = message.BaseMessageType;
 
             int channelSlot = (int)type - 1;
             NetReceiverChannel? channel = _receiveChannels[channelSlot];
@@ -493,7 +476,6 @@ namespace Lidgren.Network
                 NetDeliveryMethod.ReliableUnordered => new NetReliableUnorderedReceiver(this, NetConstants.ReliableOrderedWindowSize),
                 NetDeliveryMethod.ReliableSequenced => new NetReliableSequencedReceiver(this, NetConstants.ReliableSequencedWindowSize),
                 NetDeliveryMethod.ReliableOrdered => new NetReliableOrderedReceiver(this, NetConstants.ReliableOrderedWindowSize),
-                NetDeliveryMethod.Stream => new NetReliableOrderedReceiver(this, NetConstants.StreamWindowSize),
                 _ => throw new ArgumentOutOfRangeException(nameof(type)),
             };
 
