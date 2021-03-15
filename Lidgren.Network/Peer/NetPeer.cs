@@ -174,8 +174,7 @@ namespace Lidgren.Network
         public bool TryGetConnection(
             IPEndPoint endPoint, [MaybeNullWhen(false)] out NetConnection? connection)
         {
-            if (endPoint == null)
-                throw new ArgumentNullException(nameof(endPoint));
+            Debug.Assert(endPoint != null);
 
             return ConnectionLookup.TryGetValue(endPoint, out connection);
         }

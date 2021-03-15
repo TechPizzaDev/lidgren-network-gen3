@@ -14,7 +14,7 @@ namespace Lidgren.Network
         private int _sendStart;
         private NetBitArray _receivedAcks;
 
-        internal NetStoredReliableMessage[] StoredMessages { get; }
+        public NetStoredReliableMessage[] StoredMessages { get; }
 
         public TimeSpan ResendDelay { get; set; }
         public override int WindowSize => _windowSize;
@@ -34,9 +34,9 @@ namespace Lidgren.Network
 
         public override int GetAllowedSends()
         {
-            int retval =
-                _windowSize -
-                (_sendStart + NetConstants.SequenceNumbers - _windowStart) % NetConstants.SequenceNumbers;
+            int retval = _windowSize - NetUtility.PowOf2Mod(
+                _sendStart + NetConstants.SequenceNumbers - _windowStart, 
+                NetConstants.SequenceNumbers);
 
             LidgrenException.Assert(retval >= 0 && retval <= _windowSize);
             return retval;
@@ -100,7 +100,7 @@ namespace Lidgren.Network
         private void ExecuteSend(TimeSpan now, NetOutgoingMessage message)
         {
             int seqNr = _sendStart;
-            _sendStart = (seqNr + 1) % NetConstants.SequenceNumbers;
+            _sendStart = NetUtility.PowOf2Mod(seqNr + 1, NetConstants.SequenceNumbers);
 
             ref NetStoredReliableMessage storedMessage = ref StoredMessages[NetUtility.PowOf2Mod(seqNr, _windowSize)];
             LidgrenException.Assert(storedMessage.Message == null);
@@ -159,7 +159,7 @@ namespace Lidgren.Network
 
                 receivedAcks[windowStart] = false;
                 DestoreMessage(NetUtility.PowOf2Mod(windowStart, windowSize));
-                windowStart = (windowStart + 1) % NetConstants.SequenceNumbers;
+                windowStart = NetUtility.PowOf2Mod(windowStart + 1, NetConstants.SequenceNumbers);
 
                 // advance window if we already have early acks
                 while (receivedAcks.Get(windowStart))
@@ -172,7 +172,7 @@ namespace Lidgren.Network
                         StoredMessages[NetUtility.PowOf2Mod(windowStart, windowSize)].Message == null,
                         "Stored message has not been recycled.");
 
-                    windowStart = (windowStart + 1) % NetConstants.SequenceNumbers;
+                    windowStart = NetUtility.PowOf2Mod(windowStart + 1, NetConstants.SequenceNumbers);
                     //m_connection.m_peer.LogDebug("Advancing window to #" + m_windowStart);
                 }
                 return;

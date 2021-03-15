@@ -14,7 +14,7 @@ namespace Lidgren.Network
 
 		private void AdvanceWindow()
 		{
-			_windowStart = (_windowStart + 1) % NetConstants.SequenceNumbers;
+			_windowStart = NetUtility.PowOf2Mod(_windowStart + 1, NetConstants.SequenceNumbers);
 		}
 
 		public override void ReceiveMessage(in NetMessageView message)
@@ -54,7 +54,7 @@ namespace Lidgren.Network
 			}
 
 			// ok
-			_windowStart = (_windowStart + relate) % NetConstants.SequenceNumbers;
+			_windowStart = NetUtility.PowOf2Mod(_windowStart + relate, NetConstants.SequenceNumbers);
 			Peer.ReleaseMessage(message);
 			return;
 		}

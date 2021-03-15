@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Buffers;
 using System.Buffers.Binary;
+using System.Diagnostics;
 using System.Net;
 using System.Numerics;
 using System.Runtime.CompilerServices;
@@ -17,9 +18,6 @@ namespace Lidgren.Network
         /// <param name="bitCount">The amount of bits to copy from <paramref name="source"/>.</param>
         public static void Write(this IBitBuffer buffer, ReadOnlySpan<byte> source, int bitOffset, int bitCount)
         {
-            if (buffer == null)
-                throw new ArgumentNullException(nameof(buffer));
-
             if (source.IsEmpty)
                 return;
 
@@ -42,9 +40,6 @@ namespace Lidgren.Network
         /// </summary>
         public static void Write(this IBitBuffer buffer, ReadOnlySpan<byte> source)
         {
-            if (buffer == null)
-                throw new ArgumentNullException(nameof(buffer));
-
             if (!buffer.IsByteAligned())
             {
                 buffer.Write(source, 0, source.Length * 8);
@@ -71,11 +66,8 @@ namespace Lidgren.Network
         /// </summary>
         public static void WriteBit(this IBitBuffer buffer, bool value)
         {
-            if (buffer == null)
-                throw new ArgumentNullException(nameof(buffer));
-
             buffer.EnsureEnoughBitCapacity(1);
-            NetBitWriter.WriteByteUnchecked(value ? 1 : 0, 1, buffer.GetBuffer(), buffer.BitPosition);
+            NetBitWriter.WriteByte(value ? (byte)1 : (byte)0, 1, buffer.GetBuffer(), buffer.BitPosition);
             buffer.IncrementBitPosition(1);
         }
 
@@ -90,7 +82,7 @@ namespace Lidgren.Network
         public static void Write(this IBitBuffer buffer, sbyte value)
         {
             buffer.EnsureEnoughBitCapacity(8);
-            NetBitWriter.WriteByteUnchecked((byte)value, 8, buffer.GetBuffer(), buffer.BitPosition);
+            NetBitWriter.WriteByte((byte)value, 8, buffer.GetBuffer(), buffer.BitPosition);
             buffer.IncrementBitPosition(8);
         }
 
@@ -100,7 +92,7 @@ namespace Lidgren.Network
         public static void Write(this IBitBuffer buffer, byte value)
         {
             buffer.EnsureEnoughBitCapacity(8);
-            NetBitWriter.WriteByteUnchecked(value, 8, buffer.GetBuffer(), buffer.BitPosition);
+            NetBitWriter.WriteByte(value, 8, buffer.GetBuffer(), buffer.BitPosition);
             buffer.IncrementBitPosition(8);
         }
 
@@ -110,7 +102,7 @@ namespace Lidgren.Network
         public static void Write(this IBitBuffer buffer, byte source, int bitCount)
         {
             buffer.EnsureEnoughBitCapacity(bitCount, maxBitCount: 8);
-            NetBitWriter.WriteByteUnchecked(source, bitCount, buffer.GetBuffer(), buffer.BitPosition);
+            NetBitWriter.WriteByte(source, bitCount, buffer.GetBuffer(), buffer.BitPosition);
             buffer.IncrementBitPosition(bitCount);
         }
 
@@ -491,9 +483,6 @@ namespace Lidgren.Network
         /// </summary>
         public static void Write(this IBitBuffer buffer, IPAddress address)
         {
-            if (address == null)
-                throw new ArgumentNullException(nameof(address));
-
             Span<byte> tmp = stackalloc byte[16];
             if (!address.TryWriteBytes(tmp, out int count))
                 throw new ArgumentException("Failed to get address bytes.", nameof(address));
@@ -536,9 +525,6 @@ namespace Lidgren.Network
         /// </summary>
         public static void Write(this IBitBuffer buffer, IBitBuffer sourceBuffer)
         {
-            if (sourceBuffer == null)
-                throw new ArgumentNullException(nameof(sourceBuffer));
-
             buffer.Write(sourceBuffer.GetBuffer(), 0, sourceBuffer.BitLength);
         }
 
@@ -550,7 +536,7 @@ namespace Lidgren.Network
             buffer.WriteVar(bitArray.Length);
 
             ReadOnlySpan<uint> values = bitArray.GetBuffer().Span;
-            int bitsLeft = bitArray.Length % NetBitArray.BitsPerElement;
+            int bitsLeft = NetUtility.PowOf2Mod(bitArray.Length, NetBitArray.BitsPerElement);
             if (bitsLeft == 0)
             {
                 for (int i = 0; i < values.Length; i++)
@@ -643,9 +629,6 @@ namespace Lidgren.Network
         /// </summary>
         public static void WritePadBits(this IBitBuffer buffer)
         {
-            if (buffer == null)
-                throw new ArgumentNullException(nameof(buffer));
-
             buffer.BitPosition = NetBitWriter.BytesForBits(buffer.BitPosition) * 8;
             buffer.EnsureBitCapacity(buffer.BitPosition);
             buffer.SetLengthByPosition();
@@ -656,14 +639,13 @@ namespace Lidgren.Network
         /// </summary>
         public static void WritePadBits(this IBitBuffer buffer, int bitCount)
         {
-            if (buffer == null)
-                throw new ArgumentNullException(nameof(buffer));
-            if (bitCount < 0)
-                throw new ArgumentOutOfRangeException(nameof(bitCount));
-
-            buffer.BitPosition += bitCount;
-            buffer.EnsureBitCapacity(buffer.BitPosition);
-            buffer.SetLengthByPosition();
+            Debug.Assert(bitCount >= 0);
+            if (bitCount > 0)
+            {
+                buffer.BitPosition += bitCount;
+                buffer.EnsureBitCapacity(buffer.BitPosition);
+                buffer.SetLengthByPosition();
+            }
         }
 
         /// <summary>

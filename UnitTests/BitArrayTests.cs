@@ -8,7 +8,7 @@ namespace UnitTests
         public static void Run()
         {
             NetBitArray v = new NetBitArray(256);
-            for (int i = 0; i < 256; i++)
+            for (int i = 224; i < 256; i++)
             {
                 v.Clear();
                 if (i > 42 && i < 65)

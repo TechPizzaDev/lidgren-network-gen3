@@ -2,6 +2,7 @@
 using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Net;
@@ -25,9 +26,6 @@ namespace Lidgren.Network
         /// <param name="bitCount">The number of bits to read.</param>
         public static bool TryReadBits(this IBitBuffer buffer, Span<byte> destination, int bitCount)
         {
-            if (buffer == null)
-                throw new ArgumentNullException(nameof(buffer));
-
             if (!buffer.HasEnoughBits(bitCount))
                 return false;
 
@@ -42,15 +40,10 @@ namespace Lidgren.Network
         /// <param name="destination">The destination span.</param>
         /// <param name="bitCount">The number of bits to read.</param>
         /// <param name="maxBitCount">The maximum amount of bits to read.</param>
-        /// <exception cref="ArgumentOutOfRangeException">
-        /// Bit count is less than one or greater than <paramref name="maxBitCount"/>.
-        /// </exception>
         public static bool TryReadBits(this IBitBuffer buffer, Span<byte> destination, int bitCount, int maxBitCount)
         {
-            if (bitCount < 1)
-                throw new ArgumentOutOfRangeException(nameof(bitCount));
-            if (bitCount > maxBitCount)
-                throw new ArgumentOutOfRangeException(nameof(bitCount));
+            Debug.Assert(bitCount >= 1);
+            Debug.Assert(bitCount <= maxBitCount);
 
             return buffer.TryReadBits(destination, bitCount);
         }
@@ -73,16 +66,11 @@ namespace Lidgren.Network
         /// <param name="destination">The destination span.</param>
         /// <param name="bitCount">The number of bits to read.</param>
         /// <param name="maxBitCount">The maximum amount of bits to read.</param>
-        /// <exception cref="ArgumentOutOfRangeException">
-        /// Bit count is less than one or greater than <paramref name="maxBitCount"/>.
-        /// </exception>
         /// <exception cref="EndOfMessageException"></exception>
         public static void ReadBits(this IBitBuffer buffer, Span<byte> destination, int bitCount, int maxBitCount)
         {
-            if (bitCount < 1)
-                throw new ArgumentOutOfRangeException(nameof(bitCount));
-            if (bitCount > maxBitCount)
-                throw new ArgumentOutOfRangeException(nameof(bitCount));
+            Debug.Assert(bitCount >= 1);
+            Debug.Assert(bitCount <= maxBitCount);
 
             buffer.ReadBits(destination, bitCount);
         }
@@ -93,9 +81,6 @@ namespace Lidgren.Network
         /// <param name="destination">The destination span.</param>
         public static bool TryRead(this IBitBuffer buffer, Span<byte> destination)
         {
-            if (buffer == null)
-                throw new ArgumentNullException(nameof(buffer));
-
             if (!buffer.IsByteAligned())
                 return buffer.TryReadBits(destination, destination.Length * 8);
 
@@ -140,9 +125,6 @@ namespace Lidgren.Network
         /// <param name="destination">The destination span.</param>
         public static int StreamRead(this IBitBuffer buffer, Span<byte> destination)
         {
-            if (buffer == null)
-                throw new ArgumentNullException(nameof(buffer));
-
             if (buffer.IsByteAligned())
             {
                 int remainingBytes = Math.Min(buffer.ByteLength - buffer.BytePosition, destination.Length);
@@ -153,7 +135,7 @@ namespace Lidgren.Network
             {
                 int remainingBits = Math.Min(buffer.BitLength - buffer.BitPosition, destination.Length * 8);
                 buffer.ReadBits(destination, remainingBits);
-                return remainingBits / 8;
+                return NetUtility.DivBy8(remainingBits);
             }
         }
 
@@ -242,16 +224,13 @@ namespace Lidgren.Network
         /// </summary>
         public static bool ReadByte(this IBitBuffer buffer, out byte result)
         {
-            if (buffer == null)
-                throw new ArgumentNullException(nameof(buffer));
-
             if (!buffer.HasEnoughBits(8))
             {
                 result = default;
                 return false;
             }
 
-            result = NetBitWriter.ReadByteUnchecked(buffer.GetBuffer(), buffer.BitPosition, 8);
+            result = NetBitWriter.ReadByte(buffer.GetBuffer(), buffer.BitPosition, 8);
             buffer.BitPosition += 8;
             return true;
         }
@@ -272,9 +251,6 @@ namespace Lidgren.Network
         /// </summary>
         public static bool ReadByte(this IBitBuffer buffer, int bitCount, out byte result)
         {
-            if (buffer == null)
-                throw new ArgumentNullException(nameof(buffer));
-
             if (!buffer.HasEnoughBits(bitCount))
             {
                 result = default;
@@ -785,7 +761,7 @@ namespace Lidgren.Network
             NetBlockReader reader = buffer.OpenBlockReader();
             if (reader.BlockBytesLeft != 0)
             {
-                StringBuilder builder = new StringBuilder(reader.BlockBytesLeft);
+                StringBuilder builder = new(reader.BlockBytesLeft);
                 Span<char> tmp = stackalloc char[2048];
                 int read;
                 do
@@ -850,10 +826,7 @@ namespace Lidgren.Network
         /// <exception cref="EndOfMessageException"></exception>
         public static TimeSpan ReadLocalTime(this IBitBuffer buffer, NetConnection connection)
         {
-            if (connection == null)
-                throw new ArgumentNullException(nameof(connection));
-
-            var remoteTime = buffer.ReadTimeSpan();
+            TimeSpan remoteTime = buffer.ReadTimeSpan();
             return connection.GetLocalTime(remoteTime);
         }
 

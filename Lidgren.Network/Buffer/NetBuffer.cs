@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Buffers;
+using System.Diagnostics;
 using System.Text;
 
 namespace Lidgren.Network
@@ -29,7 +30,7 @@ namespace Lidgren.Network
 
         public int BytePosition
         {
-            get => BitPosition / 8;
+            get => NetUtility.DivBy8(BitPosition);
             set => BitPosition = value * 8;
         }
 
@@ -62,8 +63,7 @@ namespace Lidgren.Network
             get => _buffer.Length;
             set
             {
-                if (value < 0)
-                    throw new ArgumentOutOfRangeException(nameof(value));
+                Debug.Assert(value >= 0);
 
                 if (value > _buffer.Length)
                 {
@@ -85,8 +85,7 @@ namespace Lidgren.Network
 
         public void EnsureBitCapacity(int bitCount)
         {
-            if (bitCount < 0)
-                throw new ArgumentOutOfRangeException(nameof(bitCount));
+            Debug.Assert(bitCount >= 0);
 
             int byteLength = NetBitWriter.BytesForBits(bitCount);
             if (ByteCapacity < byteLength)
@@ -95,9 +94,8 @@ namespace Lidgren.Network
 
         public void IncrementBitPosition(int bitCount)
         {
-            if (bitCount < 0)
-                throw new ArgumentOutOfRangeException(nameof(bitCount));
-
+            Debug.Assert(bitCount >= 0);
+            
             _bitPosition += bitCount;
             this.SetLengthByPosition();
         }

@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Net;
 using System.Threading;
 
@@ -8,7 +7,6 @@ namespace Lidgren.Network
 {
     public partial class NetPeer
     {
-        [DebuggerHidden]
         private void AssertValidUnconnectedLength(NetOutgoingMessage message)
         {
             if (message.ByteLength > Configuration.MaximumTransmissionUnit)
@@ -138,7 +136,7 @@ namespace Lidgren.Network
                 Interlocked.Add(ref message._recyclingCount, recipientCount);
 
                 var retval = NetSendResult.Sent;
-                foreach (var conn in recipients)
+                foreach (NetConnection? conn in recipients)
                 {
                     if (conn == null)
                         continue;
@@ -176,11 +174,11 @@ namespace Lidgren.Network
             message.AssertNotSent(nameof(message));
             AssertValidUnconnectedLength(message);
 
-            var address = NetUtility.Resolve(host);
+            IPAddress? address = NetUtility.Resolve(host);
             if (address == null)
                 throw new LidgrenException("Failed to resolve " + host.ToString());
 
-            var recipient = new IPEndPoint(address, port);
+            IPEndPoint recipient = new(address, port);
             SendUnconnectedMessageCore(message, recipient);
         }
 

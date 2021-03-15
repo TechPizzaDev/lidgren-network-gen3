@@ -89,7 +89,7 @@ namespace Lidgren.Network
             _connection.Peer.AssertIsOnLibraryThread();
 
             int seqNr = _sendStart;
-            _sendStart = (_sendStart + 1) % NetConstants.SequenceNumbers;
+            _sendStart = NetUtility.PowOf2Mod(_sendStart + 1, NetConstants.SequenceNumbers);
 
             _connection.QueueSendMessage(message, seqNr);
 
@@ -119,7 +119,7 @@ namespace Lidgren.Network
                 LidgrenException.Assert(seqNr == _windowStart);
 
                 _receivedAcks[_windowStart] = false;
-                _windowStart = (_windowStart + 1) % NetConstants.SequenceNumbers;
+                _windowStart = NetUtility.PowOf2Mod(_windowStart + 1, NetConstants.SequenceNumbers);
                 return;
             }
 
@@ -129,7 +129,7 @@ namespace Lidgren.Network
             while (_windowStart != seqNr)
             {
                 _receivedAcks[_windowStart] = false;
-                _windowStart = (_windowStart + 1) % NetConstants.SequenceNumbers;
+                _windowStart = NetUtility.PowOf2Mod(_windowStart + 1, NetConstants.SequenceNumbers);
             }
         }
     }

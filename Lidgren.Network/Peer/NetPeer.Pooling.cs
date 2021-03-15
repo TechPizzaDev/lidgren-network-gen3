@@ -1,13 +1,14 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 
 namespace Lidgren.Network
 {
     public partial class NetPeer
     {
-        internal NetQueue<NetOutgoingMessage>? _outgoingMessagePool = new NetQueue<NetOutgoingMessage>();
-        internal NetQueue<NetIncomingMessage>? _incomingMessagePool = new NetQueue<NetIncomingMessage>();
+        internal NetQueue<NetOutgoingMessage>? _outgoingMessagePool = new();
+        internal NetQueue<NetIncomingMessage>? _incomingMessagePool = new();
 
         /// <summary>
         /// Creates a new message for sending.
@@ -61,12 +62,11 @@ namespace Lidgren.Network
         }
 
         /// <summary>
-        /// Recycles a message for reuse; taking pressure off the garbage collector
+        /// Recycles a message for reuse; taking pressure off the garbage collector.
         /// </summary>
         public void Recycle(NetIncomingMessage message)
         {
-            if (message == null)
-                throw new ArgumentNullException(nameof(message));
+            Debug.Assert(message != null);
 
             if (_incomingMessagePool == null)
                 return;
@@ -74,21 +74,16 @@ namespace Lidgren.Network
             LidgrenException.Assert(
                 !_incomingMessagePool.Contains(message), "Recyling already recycled message! Thread race?");
 
-            //byte[] storage = message.GetBuffer();
-            //message.SetBuffer(Array.Empty<byte>(), false);
-            //StoragePool.Return(storage);
-
             message.Reset();
             message.TrimExcess();
             _incomingMessagePool.Enqueue(message);
-
             Interlocked.Increment(ref Statistics._incomingRecycled);
         }
 
         /// <summary>
         /// Recycles a list of messages for reuse.
         /// </summary>
-        public void Recycle(IEnumerable<NetIncomingMessage> messages)
+        public void Recycle(IEnumerable<NetIncomingMessage?> messages)
         {
             if (messages == null)
                 throw new ArgumentNullException(nameof(messages));
@@ -96,19 +91,27 @@ namespace Lidgren.Network
             if (_incomingMessagePool == null)
                 return;
 
-            // first recycle the storage of each message and then recycle message
-            foreach (var message in messages.AsListEnumerator())
+            int count = 0;
+            foreach (NetIncomingMessage? message in messages.AsListEnumerator())
             {
+                if (message == null)
+                    continue;
+
+                LidgrenException.Assert(
+                    !_incomingMessagePool.Contains(message), "Recyling already recycled message! Thread race?");
+
                 message.Reset();
                 message.TrimExcess();
                 _incomingMessagePool.Enqueue(message);
-
-                Interlocked.Increment(ref Statistics._incomingRecycled);
+                count++;
             }
+            Interlocked.Add(ref Statistics._incomingRecycled, count);
         }
 
         internal void Recycle(NetOutgoingMessage message)
         {
+            Debug.Assert(message != null);
+
             message.Reset();
             message.TrimExcess();
 

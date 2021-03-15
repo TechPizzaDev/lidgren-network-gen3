@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Buffers;
+using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
@@ -33,11 +34,11 @@ namespace Lidgren.Network
             if (bitCount == 0)
                 return;
 
-            var src = source[(sourceBitOffset / 8)..];
-            var dst = destination[(destinationBitOffset / 8)..];
+            var src = source[NetUtility.DivBy8(sourceBitOffset )..];
+            var dst = destination[NetUtility.DivBy8(destinationBitOffset)..];
 
-            sourceBitOffset %= 8;
-            destinationBitOffset %= 8;
+            sourceBitOffset = NetUtility.PowOf2Mod(sourceBitOffset, 8);
+            destinationBitOffset = NetUtility.PowOf2Mod(destinationBitOffset, 8);
 
             int srcNextRemBits = 8 - sourceBitOffset;
             int dstNextRemBits = 8 - destinationBitOffset;
@@ -76,7 +77,7 @@ namespace Lidgren.Network
             }
             else
             {
-                var byteSrc = src.Slice(0, bitCount / 8);
+                var byteSrc = src.Slice(0, NetUtility.DivBy8(bitCount));
                 byteSrc.CopyTo(dst);
                 i = byteSrc.Length;
             }
@@ -330,13 +331,19 @@ namespace Lidgren.Network
         #region ReadByte[Unchecked]
 
         /// <summary>
-        /// Read 1 to 8 bits from a buffer into a byte without validating offsets.
+        /// Read 1 to 8 bits from a buffer into a byte.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-        public static byte ReadByteUnchecked(ReadOnlySpan<byte> source, int bitOffset, int bitCount)
+        public static byte ReadByte(ReadOnlySpan<byte> source, int bitOffset, int bitCount)
         {
-            int byteOffset = bitOffset / 8;
-            int firstByteLength = bitOffset % 8;
+            Debug.Assert(bitCount >= 0);
+            Debug.Assert(bitCount <= 8);
+
+            if (bitCount == 0)
+                return 0;
+
+            int byteOffset = NetUtility.DivBy8(bitOffset);
+            int firstByteLength = NetUtility.PowOf2Mod(bitOffset, 8);
 
             if (bitCount == 8 && firstByteLength == 0)
                 return source[byteOffset];
@@ -360,34 +367,28 @@ namespace Lidgren.Network
             return (byte)(first | (byte)(second << (bitCount - bitsInSecondByte)));
         }
 
-        /// <summary>
-        /// Read 1 to 8 bits from a buffer into a byte.
-        /// </summary>
-        public static byte ReadByte(ReadOnlySpan<byte> source, int bitOffset, int bitCount)
-        {
-            if (bitCount == 0) return 0;
-            if (bitCount < 1) throw new ArgumentOutOfRangeException(nameof(bitCount));
-            if (bitCount > 8) throw new ArgumentOutOfRangeException(nameof(bitCount));
-
-            return ReadByteUnchecked(source, bitOffset, bitCount);
-        }
-
         #endregion
 
         #region WriteByte[Unchecked]
 
         /// <summary>
-        /// Writes 1 to 8 bits of data to a buffer without validating offsets.
+        /// Writes 1 to 8 bits of data to a buffer.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-        public static void WriteByteUnchecked(
-            int source, int bitCount, Span<byte> destination, int destinationBitOffset)
+        public static void WriteByte(
+            byte source, int bitCount, Span<byte> destination, int destinationBitOffset)
         {
-            // Mask out all the bits we dont want
-            source &= 255 >> (8 - bitCount);
+            Debug.Assert(bitCount >= 0);
+            Debug.Assert(bitCount <= 8);
 
-            int p = destinationBitOffset / 8;
-            int bitsUsed = destinationBitOffset % 8;
+            if (bitCount == 0)
+                return;
+
+            // Mask out all the bits we dont want
+            source &= (byte)(255 >> (8 - bitCount));
+
+            int p = NetUtility.DivBy8(destinationBitOffset);
+            int bitsUsed = NetUtility.PowOf2Mod(destinationBitOffset, 8);
             int bitsFree = 8 - bitsUsed;
             int bitsLeft = bitsFree - bitCount;
 
@@ -420,20 +421,7 @@ namespace Lidgren.Network
         public static void WriteByte(
             byte source, Span<byte> destination, int destinationBitOffset)
         {
-            WriteByteUnchecked(source, 8, destination, destinationBitOffset);
-        }
-
-        /// <summary>
-        /// Writes 1 to 8 bits of data to a buffer.
-        /// </summary>
-        public static void WriteByte(
-            byte source, int bitCount, Span<byte> destination, int destinationBitOffset)
-        {
-            if (bitCount == 0) return;
-            if (bitCount < 1) throw new ArgumentOutOfRangeException(nameof(bitCount));
-            if (bitCount > 8) throw new ArgumentOutOfRangeException(nameof(bitCount));
-
-            WriteByteUnchecked(source, bitCount, destination, destinationBitOffset);
+            WriteByte(source, 8, destination, destinationBitOffset);
         }
 
         #endregion
@@ -510,7 +498,7 @@ namespace Lidgren.Network
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static int BytesForBits(int bitCount)
         {
-            return (bitCount + 7) / 8;
+            return NetUtility.DivBy8(bitCount + 7);
         }
 
         /// <summary>
@@ -522,7 +510,7 @@ namespace Lidgren.Network
             const int MaxBytesWithoutOverflow = MaxVarInt32Size - 1;
 
             result = 0;
-            
+
             if (!buffer.HasEnoughBits(8))
                 return OperationStatus.NeedMoreData;
 

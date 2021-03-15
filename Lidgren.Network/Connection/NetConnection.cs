@@ -14,12 +14,12 @@ namespace Lidgren.Network
         /// <summary>
         /// Number of heartbeats to skip checking for infrequent events (ping, timeout etc).
         /// </summary>
-        private const int InfrequentEventsSkipFrames = 8;
+        private const uint InfrequentEventsSkipFrames = 8;
 
         /// <summary>
         /// Number of heartbeats to wait for more incoming messages before sending packet.
         /// </summary>
-        private const int MessageCoalesceFrames = 4;
+        private const uint MessageCoalesceFrames = 4;
 
         private bool _isDisposed;
         private int _sendBufferWritePtr;
@@ -145,7 +145,7 @@ namespace Lidgren.Network
                 Status != NetConnectionStatus.InitiatedConnect &&
                 Status != NetConnectionStatus.RespondedConnect);
 
-            if ((frameCounter % InfrequentEventsSkipFrames) == 0)
+            if (NetUtility.PowOf2Mod(frameCounter, InfrequentEventsSkipFrames) == 0)
             {
                 if (now > _timeoutDeadline)
                 {
@@ -174,7 +174,7 @@ namespace Lidgren.Network
             // Note: at this point m_sendBufferWritePtr and m_sendBufferNumMessages may be non-null;
             // resends may already be queued up
 
-            if ((frameCounter % MessageCoalesceFrames) == 0) // coalesce a few frames
+            if (NetUtility.PowOf2Mod(frameCounter, MessageCoalesceFrames) == 0) // coalesce a few frames
             {
                 byte[] sendBuffer = Peer._sendBuffer;
                 int mtu = CurrentMTU;

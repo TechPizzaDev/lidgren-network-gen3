@@ -6,8 +6,6 @@ using System.Text;
 
 namespace Lidgren.Network
 {
-    // TODO: optimize
-
     /// <summary>
     /// Mutable array of bits.
     /// </summary>
@@ -30,11 +28,16 @@ namespace Lidgren.Network
             get
             {
                 int sum = 0;
-                uint[]? data = _data;
-                if (data != null)
+                Span<uint> slice = _data.AsSpan(0, DivByESize(Length));
+                for (int i = 0; i < slice.Length; i++)
                 {
-                    for (int i = 0; i < data.Length; i++)
-                        sum += BitOperations.PopCount(data[i]);
+                    sum += BitOperations.PopCount(slice[i]);
+                }
+
+                int rem = NetUtility.PowOf2Mod(Length, BitsPerElement);
+                if (rem != 0)
+                {
+                    sum += BitOperations.PopCount(_data![^1] & ~(uint.MaxValue << rem));
                 }
                 return sum;
             }
@@ -47,11 +50,17 @@ namespace Lidgren.Network
         {
             get
             {
-                if (_data != null)
+                Span<uint> slice = _data.AsSpan(0, DivByESize(Length));
+                for (int i = 0; i < slice.Length; i++)
                 {
-                    for (int i = 0; i < _data.Length; i++)
-                        if (BitOperations.PopCount(_data[i]) != 0)
-                            return false;
+                    if (slice[i] != 0)
+                        return false;
+                }
+
+                int rem = NetUtility.PowOf2Mod(Length, BitsPerElement);
+                if (rem != 0)
+                {
+                    return (_data![^1] & ~(uint.MaxValue << rem)) == 0;
                 }
                 return true;
             }
@@ -123,10 +132,13 @@ namespace Lidgren.Network
         /// </summary>
         public int IndexOf(bool value, int startIndex, int count)
         {
-            Span<uint> data = _data;
-            int elementOffset = startIndex / BitsPerElement;
+            uint[]? data = _data;
+            if (data == null)
+                return -1;
 
-            int bitOffset = startIndex % BitsPerElement;
+            int elementOffset = DivByESize(startIndex);
+
+            int bitOffset = NetUtility.PowOf2Mod(startIndex, BitsPerElement);
             if (bitOffset != 0)
             {
                 int index = FindBit(value, data[elementOffset++], bitOffset, 32 - bitOffset);
@@ -204,7 +216,7 @@ namespace Lidgren.Network
         /// </summary>
         public bool Get(int bitIndex)
         {
-            uint value = _data![bitIndex / BitsPerElement] & (1u << bitIndex);
+            uint value = _data![DivByESize(bitIndex)] & (1u << bitIndex);
             return value != 0;
         }
 
@@ -213,8 +225,8 @@ namespace Lidgren.Network
         /// </summary>
         public void Set(int bitIndex, bool value)
         {
-            int index = bitIndex / BitsPerElement;
-            uint mask = 1u << (bitIndex % BitsPerElement);
+            int index = DivByESize(bitIndex);
+            uint mask = 1u << NetUtility.PowOf2Mod(bitIndex, BitsPerElement);
             if (value)
             {
                 _data![index] |= mask;
@@ -269,18 +281,21 @@ namespace Lidgren.Network
             Span<uint> d1 = _data;
             Span<uint> d2 = other._data;
 
-            for (int i = 0; i < d1.Length - 1; i++)
+            Span<uint> slice1 = d1.Slice(0, DivByESize(Length));
+            Span<uint> slice2 = d2.Slice(0, slice1.Length);
+
+            for (int i = 0; i < slice1.Length; i++)
             {
-                if (d1[i] != d2[i])
+                if (slice1[i] != slice2[i])
                     return false;
             }
 
-            if (d1.Length > 0)
+            int rem = NetUtility.PowOf2Mod(Length, BitsPerElement);
+            if (rem != 0)
             {
-                uint mask = ~(uint.MaxValue << (Length % BitsPerElement));
+                uint mask = ~(uint.MaxValue << rem);
                 return (d1[^1] & mask) == (d2[^1] & mask);
             }
-
             return true;
         }
 
@@ -294,18 +309,15 @@ namespace Lidgren.Network
             unchecked
             {
                 uint result = 17;
-                uint[]? data = _data;
-                if (data != null)
-                {
-                    for (int i = 0; i < data.Length - 1; i++)
-                        result = result * 31 + data[i];
 
-                    if (data.Length > 0)
-                    {
-                        uint tmp = data[^1];
-                        tmp &= ~(uint.MaxValue << (Length % BitsPerElement));
-                        result = result * 31 + tmp;
-                    }
+                Span<uint> slice = _data.AsSpan(0, DivByESize(Length));
+                for (int i = 0; i < slice.Length; i++)
+                    result = result * 31 + slice[i];
+
+                int rem = NetUtility.PowOf2Mod(Length, BitsPerElement);
+                if (rem != 0)
+                {
+                    result = result * 31 + (_data![^1] & ~(uint.MaxValue << rem));
                 }
                 return (int)result;
             }
@@ -319,6 +331,12 @@ namespace Lidgren.Network
         public static bool operator !=(NetBitArray left, NetBitArray right)
         {
             return !(left == right);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static int DivByESize(int value)
+        {
+            return value >> 5;
         }
     }
 }

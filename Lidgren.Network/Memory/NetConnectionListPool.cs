@@ -31,9 +31,8 @@ namespace Lidgren.Network
         /// <returns>The rented list.</returns>
         public static List<NetConnection> Rent(int capacity = 0)
         {
-            if (capacity < 0)
-                throw new ArgumentNullException(nameof(capacity));
-            
+            Debug.Assert(capacity >= 0);
+
             int bucketIndex = capacity == 0 ? 0 : SelectBucketIndex(capacity);
 
             Bucket bucket = bucketIndex < Buckets.Length ? Buckets[bucketIndex] : LargeBucket;

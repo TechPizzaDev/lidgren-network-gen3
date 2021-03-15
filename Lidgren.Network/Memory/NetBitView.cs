@@ -30,14 +30,16 @@ namespace Lidgren.Network
                 {
                     ReadOnlySpan<uint> intSpan = MemoryMarshal.Cast<byte, uint>(byteSpan);
                     for (int i = 0; i < intSpan.Length; i++)
+                    {
                         sum += BitOperations.PopCount(intSpan[i]);
-
+                    }
                     byteSpan = byteSpan[(intSpan.Length * Unsafe.SizeOf<uint>())..];
                 }
 
                 for (int i = 0; i < byteSpan.Length; i++)
+                {
                     sum += BitOperations.PopCount(byteSpan[i]);
-
+                }
                 return sum;
             }
         }
@@ -211,6 +213,6 @@ namespace Lidgren.Network
 
         public static implicit operator T(NetBitView<T> view) => view.Value;
 
-        public static implicit operator NetBitView<T>(T value) => new NetBitView<T>(value);
+        public static implicit operator NetBitView<T>(T value) => new(value);
     }
 }

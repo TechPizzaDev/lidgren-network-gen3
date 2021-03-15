@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Buffers;
 using System.Buffers.Binary;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Runtime.CompilerServices;
@@ -44,16 +45,10 @@ namespace Lidgren.Network
         /// <param name="destination">The destination span.</param>
         /// <param name="bitCount">The number of bits to read.</param>
         /// <param name="maxBitCount">The maximum amount of bits to read.</param>
-        /// <exception cref="ArgumentOutOfRangeException">
-        /// Bit count is less than one or greater than <paramref name="maxBitCount"/>.
-        /// </exception>
         public static void PeekBits(this IBitBuffer buffer, Span<byte> destination, int bitCount, int maxBitCount)
         {
-            if (bitCount < 1)
-                throw new ArgumentOutOfRangeException(nameof(bitCount));
-
-            if (bitCount > maxBitCount)
-                throw new ArgumentOutOfRangeException(nameof(bitCount));
+            Debug.Assert(bitCount >= 1);
+            Debug.Assert(bitCount <= maxBitCount);
 
             buffer.TryPeekBits(destination, bitCount);
         }
@@ -91,7 +86,7 @@ namespace Lidgren.Network
             if (!buffer.HasEnoughBits(1))
                 throw new EndOfMessageException();
 
-            return NetBitWriter.ReadByteUnchecked(buffer.GetBuffer(), buffer.BitPosition, 1) > 0;
+            return NetBitWriter.ReadByte(buffer.GetBuffer(), buffer.BitPosition, 1) > 0;
         }
 
         /// <summary>
@@ -103,7 +98,7 @@ namespace Lidgren.Network
             if (!buffer.HasEnoughBits(8))
                 throw new EndOfMessageException();
 
-            return (sbyte)NetBitWriter.ReadByteUnchecked(buffer.GetBuffer(), buffer.BitPosition, 8);
+            return (sbyte)NetBitWriter.ReadByte(buffer.GetBuffer(), buffer.BitPosition, 8);
         }
 
         /// <summary>
@@ -114,7 +109,7 @@ namespace Lidgren.Network
             if (!buffer.HasEnoughBits(8))
                 throw new EndOfMessageException();
 
-            return NetBitWriter.ReadByteUnchecked(buffer.GetBuffer(), buffer.BitPosition, 8);
+            return NetBitWriter.ReadByte(buffer.GetBuffer(), buffer.BitPosition, 8);
         }
 
         /// <summary>
@@ -370,9 +365,6 @@ namespace Lidgren.Network
         /// </summary>
         public static bool PeekString(this IBitBuffer buffer, [MaybeNullWhen(false)] out string result, bool replaceInvalidSequences = true)
         {
-            if (buffer == null)
-                throw new ArgumentNullException(nameof(buffer));
-
             int startPosition = buffer.BitPosition;
             bool read = buffer.ReadString(out result, replaceInvalidSequences);
             buffer.BitPosition = startPosition;

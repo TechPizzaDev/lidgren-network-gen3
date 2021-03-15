@@ -469,9 +469,9 @@ namespace Lidgren.Network
 
         internal static int RelativeSequenceNumber(int number, int expected)
         {
-            return
-                (number - expected + NetConstants.SequenceNumbers + NetConstants.SequenceNumbers / 2)
-                % NetConstants.SequenceNumbers - NetConstants.SequenceNumbers / 2;
+            return PowOf2Mod(
+                number - expected + NetConstants.SequenceNumbers + NetConstants.SequenceNumbers / 2,
+                NetConstants.SequenceNumbers) - NetConstants.SequenceNumbers / 2;
 
             // old impl:
             //int value = ((nr + NetConstants.SequenceNumbers) - expected) % NetConstants.SequenceNumbers;
@@ -540,6 +540,18 @@ namespace Lidgren.Network
         internal static int PowOf2Mod(int value, int denominator)
         {
             return value & (denominator - 1);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static uint PowOf2Mod(uint value, uint denominator)
+        {
+            return value & (denominator - 1);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static int DivBy8(int value)
+        {
+            return value >> 3;
         }
 
         internal static bool IsPowerOfTwo(ulong value)
