@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Net;
 using System.Diagnostics;
+using System.Collections.Generic;
 
 namespace Lidgren.Network
 {
@@ -28,6 +29,7 @@ namespace Lidgren.Network
         internal NetReceiverChannel?[] _receiveChannels;
         internal NetQueue<(NetMessageType Type, int SequenceNumber)> _queuedOutgoingAcks;
         internal NetQueue<(NetMessageType Type, int SequenceNumber)> _queuedIncomingAcks;
+        internal Dictionary<int, ReceivedFragmentGroup> _receivedFragmentGroups;
 
         internal string DebuggerDisplay =>
             $"RemoteUniqueIdentifier = {RemoteUniqueIdentifier}, RemoteEndPoint = {RemoteEndPoint}";
@@ -91,6 +93,7 @@ namespace Lidgren.Network
             _receiveChannels = new NetReceiverChannel[NetConstants.TotalChannels];
             _queuedOutgoingAcks = new NetQueue<(NetMessageType, int)>(16);
             _queuedIncomingAcks = new NetQueue<(NetMessageType, int)>(16);
+            _receivedFragmentGroups = new Dictionary<int, ReceivedFragmentGroup>();
             Statistics = new NetConnectionStatistics(this);
             AverageRoundtripTime = default;
             CurrentMTU = _peerConfiguration.MaximumTransmissionUnit;

@@ -21,9 +21,6 @@ namespace Lidgren.Network
     {
         private int _lastUsedFragmentGroup;
 
-        private Dictionary<NetConnection, Dictionary<int, ReceivedFragmentGroup>> _receivedFragmentGroups =
-            new Dictionary<NetConnection, Dictionary<int, ReceivedFragmentGroup>>();
-
         // on user thread
         // the message must not be sent already
         private NetSendResult SendFragmentedMessage(
@@ -49,9 +46,9 @@ namespace Lidgren.Network
                 _lastUsedFragmentGroup = 1;
                 group = 1;
             }
-            message._fragmentGroup = group;
 
             // do not send msg; but set fragmentgroup in case user tries to recycle it immediately
+            message._fragmentGroup = group;
 
             // create fragmentation specifics
             int totalBytes = message.ByteLength;
@@ -100,8 +97,7 @@ namespace Lidgren.Network
 
         private bool HandleReleasedFragment(in NetMessageView message)
         {
-            if (message.Connection == null)
-                throw new ArgumentException("The message has no associated connection.", nameof(message));
+            LidgrenException.Assert(message.Connection != null, "The message has no associated connection.");
 
             AssertIsOnLibraryThread();
 
@@ -137,16 +133,12 @@ namespace Lidgren.Network
                 return false;
             }
 
-            if (!_receivedFragmentGroups.TryGetValue(message.Connection, out var groups))
-            {
-                groups = new Dictionary<int, ReceivedFragmentGroup>();
-                _receivedFragmentGroups.Add(message.Connection, groups);
-            }
-
-            if (!groups.TryGetValue(group, out ReceivedFragmentGroup info))
+            NetConnection connection = message.Connection;
+            
+            if (!connection._receivedFragmentGroups.TryGetValue(group, out ReceivedFragmentGroup info))
             {
                 info = new ReceivedFragmentGroup(new byte[totalBytes], new NetBitArray(totalChunkCount));
-                groups.Add(group, info);
+                connection._receivedFragmentGroups.Add(group, info);
             }
 
             NetBitArray receivedChunks = info.ReceivedChunks;
@@ -181,7 +173,7 @@ namespace Lidgren.Network
                 "Fragment group #" + group + " fully received in " +
                 totalChunkCount + " chunks (" + totalBits + " bits)");
 
-            groups.Remove(group);
+            connection._receivedFragmentGroups.Remove(group);
 
             ReleaseMessage(incomingMessage);
             return true;

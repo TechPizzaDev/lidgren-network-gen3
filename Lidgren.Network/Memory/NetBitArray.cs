@@ -30,10 +30,11 @@ namespace Lidgren.Network
             get
             {
                 int sum = 0;
-                if (_data != null)
+                uint[]? data = _data;
+                if (data != null)
                 {
-                    for (int i = 0; i < _data.Length; i++)
-                        sum += BitOperations.PopCount(_data[i]);
+                    for (int i = 0; i < data.Length; i++)
+                        sum += BitOperations.PopCount(data[i]);
                 }
                 return sum;
             }
@@ -59,7 +60,7 @@ namespace Lidgren.Network
         /// <summary>
         /// Gets or sets a bit at the specified index.
         /// </summary>
-        [System.Runtime.CompilerServices.IndexerName("Bits")]
+        [IndexerName("Bits")]
         public bool this[int index]
         {
             get => Get(index);
@@ -100,18 +101,19 @@ namespace Lidgren.Network
         {
             // TODO: check if it can be optimized with BitOperations
 
-            if (_data == null)
+            uint[]? data = _data;
+            if (data == null)
                 return;
 
-            uint firstBit = _data[0] & 1;
+            uint firstBit = data[0] & 1;
 
-            for (int i = 0; i < _data.Length - 1; i++)
-                _data[i] = ((_data[i] >> 1) & ~(1 << 31)) | _data[i + 1] << 31;
+            for (int i = 0; i < data.Length - 1; i++)
+                data[i] = ((data[i] >> 1) & ~(1 << 31)) | data[i + 1] << 31;
 
-            int lastIndex = Length - 1 - (BitsPerElement * (_data.Length - 1));
+            int lastIndex = Length - 1 - (BitsPerElement * (data.Length - 1));
 
             // special handling of last int
-            ref uint last = ref _data[^1];
+            ref uint last = ref data[^1];
             last >>= 1;
             last |= firstBit << lastIndex;
         }
@@ -119,28 +121,82 @@ namespace Lidgren.Network
         /// <summary>
         /// Gets the first (lowest) bit with a given value.
         /// </summary>
-        public int IndexOf(bool value)
+        public int IndexOf(bool value, int startIndex, int count)
         {
-            if (_data == null)
-                return -1;
+            Span<uint> data = _data;
+            int elementOffset = startIndex / BitsPerElement;
 
-            int flag = value ? 1 : 0;
-            int offset = 0;
-            uint data = _data[0];
-
-            int a = 0;
-            while (((data >> a) & 1) != flag)
+            int bitOffset = startIndex % BitsPerElement;
+            if (bitOffset != 0)
             {
-                a++;
-                if (a == BitsPerElement)
+                int index = FindBit(value, data[elementOffset++], bitOffset, 32 - bitOffset);
+                if (index != -1)
+                    return index;
+
+                count -= 31 - bitOffset;
+                if (count <= 0)
+                    return -1;
+            }
+
+            if (value)
+            {
+                for (int i = elementOffset; i < data.Length; i++)
                 {
-                    offset++;
-                    a = 0;
-                    data = _data[offset];
+                    uint x = data[i];
+                    if (x != 0)
+                    {
+                        int index = FindBit(value, x, 0, count);
+                        if (index == -1)
+                            return -1;
+                        return bitOffset + i * BitsPerElement + index;
+                    }
+                    count -= BitsPerElement;
+                }
+            }
+            else
+            {
+                for (int i = elementOffset; i < data.Length; i++)
+                {
+                    uint x = data[i];
+                    if (x != uint.MaxValue)
+                    {
+                        int index = FindBit(value, x, 0, count);
+                        if (index == -1)
+                            return -1;
+                        return bitOffset + i * BitsPerElement + index;
+                    }
+                    count -= BitsPerElement;
                 }
             }
 
-            return (offset * BitsPerElement) + a;
+            return -1;
+        }
+
+        private static int FindBit(bool value, uint buffer, int offset, int count)
+        {
+            int flag = value ? 1 : 0;
+            for (int i = 0; i < count; i++)
+            {
+                if (((buffer >> (i + offset)) & 1) == flag)
+                    return i + offset;
+            }
+            return -1;
+        }
+
+        /// <summary>
+        /// Gets the first (lowest) bit with a given value.
+        /// </summary>
+        public int IndexOf(bool value, int offset)
+        {
+            return IndexOf(value, offset, Length - offset);
+        }
+
+        /// <summary>
+        /// Gets the first (lowest) bit with a given value.
+        /// </summary>
+        public int IndexOf(bool value)
+        {
+            return IndexOf(value, 0, Length);
         }
 
         /// <summary>
@@ -238,14 +294,15 @@ namespace Lidgren.Network
             unchecked
             {
                 uint result = 17;
-                if (_data != null)
+                uint[]? data = _data;
+                if (data != null)
                 {
-                    for (int i = 0; i < _data.Length - 1; i++)
-                        result = result * 31 + _data[i];
+                    for (int i = 0; i < data.Length - 1; i++)
+                        result = result * 31 + data[i];
 
-                    if (_data.Length > 0)
+                    if (data.Length > 0)
                     {
-                        uint tmp = _data[^1];
+                        uint tmp = data[^1];
                         tmp &= ~(uint.MaxValue << (Length % BitsPerElement));
                         result = result * 31 + tmp;
                     }

@@ -52,9 +52,14 @@ namespace Lidgren.Network
             ReadOnlySpan<byte> buffer, ref int offset,
             out int group, out int totalBits, out int chunkByteSize, out int chunkNumber)
         {
+            group = 0;
+            totalBits = 0;
+            chunkByteSize = 0;
+            chunkNumber = -1;
+
             int part = 0;
             int shift = 0;
-            while (true)
+            while (offset < buffer.Length)
             {
                 int num3 = buffer[offset++];
                 part |= (num3 & 0x7f) << (shift & 0x1f);
@@ -68,7 +73,7 @@ namespace Lidgren.Network
 
             part = 0;
             shift = 0;
-            while (true)
+            while (offset < buffer.Length)
             {
                 int num3 = buffer[offset++];
                 part |= (num3 & 0x7f) << (shift & 0x1f);
@@ -82,7 +87,7 @@ namespace Lidgren.Network
 
             part = 0;
             shift = 0;
-            while (true)
+            while (offset < buffer.Length)
             {
                 int num3 = buffer[offset++];
                 part |= (num3 & 0x7f) << (shift & 0x1f);
@@ -96,7 +101,7 @@ namespace Lidgren.Network
 
             part = 0;
             shift = 0;
-            while (true)
+            while (offset < buffer.Length)
             {
                 int num3 = buffer[offset++];
                 part |= (num3 & 0x7f) << (shift & 0x1f);
@@ -108,7 +113,10 @@ namespace Lidgren.Network
                 }
             }
 
-            return true;
+            return group != 0
+                && totalBits != 0
+                && chunkByteSize != 0
+                && chunkNumber != -1;
         }
 
         public static int GetFragmentationHeaderSize(int groupId, int totalBits, int chunkByteSize, int numChunks)

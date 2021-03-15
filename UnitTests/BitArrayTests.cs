@@ -16,7 +16,7 @@ namespace UnitTests
 
                 if (!v.IsZero)
                     throw new LidgrenException("bit vector fail 1");
-
+                
                 v.Set(i, true);
 
                 if (!v.Get(i))

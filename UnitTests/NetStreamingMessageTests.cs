@@ -14,7 +14,7 @@ namespace UnitTests
 
             string appId = "NetStreamingMessages";
             int port = 20002;
-            int clientCount = 8;
+            int clientCount = 16;
 
             var serverThread = new Thread(() =>
             {
@@ -41,7 +41,7 @@ namespace UnitTests
                 });
 
                 int count = clientCount;
-                while (count > 0 && server.TryReadMessage(10000, out var message))
+                while (count > 0 && server.TryReadMessage(60000, out var message))
                 {
                     switch (message.MessageType)
                     {
@@ -125,7 +125,7 @@ namespace UnitTests
                     connection.SendMessage(outMsg, NetDeliveryMethod.ReliableOrdered, 1);
 
                     bool stop = false;
-                    while (!stop && client.TryReadMessage(10000, out var message))
+                    while (!stop && client.TryReadMessage(60000, out var message))
                     {
                         switch (message.MessageType)
                         {

@@ -7,7 +7,7 @@ namespace Lidgren.Network
     public enum NetUnreliableSizeBehaviour
     {
         /// <summary>
-        /// Sending an unreliable message will ignore MTU and send everything in a single packet.
+        /// Unreliable message will ignore MTU and send everything in a single packet.
         /// </summary>
         IgnoreMTU = 0,
 
@@ -19,7 +19,7 @@ namespace Lidgren.Network
         NormalFragmentation = 1,
 
         /// <summary>
-        /// Alternate behaviour; just drops unreliable messages above MTU.
+        /// Drops unreliable messages above the current MTU.
         /// </summary>
         DropAboveMTU = 2,
     }

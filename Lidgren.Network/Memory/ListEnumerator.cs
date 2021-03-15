@@ -13,6 +13,10 @@ namespace Lidgren.Network
     {
         private delegate bool MoveNextDelegate(ref ListEnumerator<T> enumerator);
 
+        private static readonly MoveNextDelegate _moveNextEnumerator = MoveNextEnumerator;
+        private static readonly MoveNextDelegate _moveNextList = MoveNextList;
+        private static readonly MoveNextDelegate _moveNextROList = MoveNextROList;
+
         private int _index;
         private MoveNextDelegate _moveDelegate;
 
@@ -23,24 +27,36 @@ namespace Lidgren.Network
         public T Current { get; private set; }
         object IEnumerator.Current => Current!;
 
-        public ListEnumerator(IEnumerator<T> enumerator) : this()
+        public ListEnumerator(IEnumerator<T> enumerator)
         {
             _enumerator = enumerator ?? throw new ArgumentNullException(nameof(enumerator));
-            _moveDelegate = MoveNextEnumerator;
+            _list = null;
+            _roList = null;
+
+            _moveDelegate = _moveNextEnumerator;
+            _index = 0;
             Current = default!;
         }
 
-        public ListEnumerator(IList<T> list) : this()
+        public ListEnumerator(IList<T> list)
         {
             _list = list ?? throw new ArgumentNullException(nameof(list));
-            _moveDelegate = MoveNextList;
+            _enumerator = null;
+            _roList = null;
+
+            _moveDelegate = _moveNextList;
+            _index = 0;
             Current = default!;
         }
 
-        public ListEnumerator(IReadOnlyList<T> list) : this()
+        public ListEnumerator(IReadOnlyList<T> list)
         {
             _roList = list ?? throw new ArgumentNullException(nameof(list));
-            _moveDelegate = MoveNextROList;
+            _enumerator = null;
+            _list = null;
+
+            _moveDelegate = _moveNextROList;
+            _index = 0;
             Current = default!;
         }
 

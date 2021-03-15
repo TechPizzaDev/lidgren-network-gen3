@@ -206,6 +206,7 @@ namespace Lidgren.Network
             // Ok, lets resend all missing acks
             TimeSpan resendDelay = ResendDelay * 0.35;
             int rnr = seqNr;
+
             do
             {
                 rnr--;
@@ -233,11 +234,10 @@ namespace Lidgren.Network
                         //    already resent recently
                     }
                 }
-                else
-                {
-                    // m_connection.m_peer.LogDebug("Not resending #" + rnr + " (since we got ack)");
-                }
-
+                //else
+                //{
+                //    // m_connection.m_peer.LogDebug("Not resending #" + rnr + " (since we got ack)");
+                //}
             }
             while (rnr != windowStart);
         }
