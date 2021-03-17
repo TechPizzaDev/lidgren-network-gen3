@@ -4,11 +4,11 @@ using System.Collections.Generic;
 
 namespace Lidgren.Network
 {
-    internal readonly struct ReceivedFragmentGroup
+    internal class ReceivedFragmentGroup
     {
         public byte[] Data { get; }
         public NetBitArray ReceivedChunks { get; }
-        //public TimeSpan LastReceived { get; set; } // TODO: discard after certain age
+        public TimeSpan LastReceived { get; set; } // TODO: discard after certain age
 
         public ReceivedFragmentGroup(byte[] data, NetBitArray receivedChunks)
         {
@@ -67,7 +67,7 @@ namespace Lidgren.Network
             for (int i = 0; i < numChunks; i++)
             {
                 NetOutgoingMessage chunk = CreateMessage();
-                chunk.SetBuffer(buffer);
+                chunk.SetBuffer(buffer, false);
                 chunk.BitLength = Math.Min(bitsLeft, bitsPerChunk);
 
                 chunk._fragmentGroup = group;
@@ -134,8 +134,8 @@ namespace Lidgren.Network
             }
 
             NetConnection connection = message.Connection;
-            
-            if (!connection._receivedFragmentGroups.TryGetValue(group, out ReceivedFragmentGroup info))
+
+            if (!connection._receivedFragmentGroups.TryGetValue(group, out ReceivedFragmentGroup? info))
             {
                 info = new ReceivedFragmentGroup(new byte[totalBytes], new NetBitArray(totalChunkCount));
                 connection._receivedFragmentGroups.Add(group, info);
@@ -144,7 +144,7 @@ namespace Lidgren.Network
             NetBitArray receivedChunks = info.ReceivedChunks;
             receivedChunks[chunkNumber] = true;
 
-            //info.LastReceived = NetTime.Now; // TODO
+            info.LastReceived = message.Time;
 
             // copy to data
             int offset = chunkNumber * chunkByteSize;
@@ -164,8 +164,8 @@ namespace Lidgren.Network
             }
 
             // Done! Transform this incoming message
-            var incomingMessage = message.ToIncomingMessage(this);
-            incomingMessage.SetBuffer(info.Data);
+            NetIncomingMessage incomingMessage = message.ToIncomingMessage(this);
+            incomingMessage.SetBuffer(info.Data, false);
             incomingMessage.BitLength = totalBits;
             incomingMessage.IsFragment = false;
 

@@ -12,11 +12,12 @@ namespace Lidgren.Network
         private int _windowStart;
         private int _windowSize;
         private int _sendStart;
+        private bool _doFlowControl;
         private NetBitArray _receivedAcks;
 
         public override int WindowSize => _windowSize;
 
-        public NetUnreliableSenderChannel(NetConnection connection, int windowSize)
+        public NetUnreliableSenderChannel(NetConnection connection, int windowSize, NetDeliveryMethod method)
         {
             LidgrenException.AssertIsPowerOfTwo((ulong)windowSize, nameof(windowSize));
 
@@ -25,13 +26,22 @@ namespace Lidgren.Network
             _windowStart = 0;
             _sendStart = 0;
             _receivedAcks = new NetBitArray(NetConstants.SequenceNumbers);
+
+            _doFlowControl = true;
+            if (method == NetDeliveryMethod.Unreliable &&
+                connection.Peer.Configuration.SuppressUnreliableUnorderedAcks)
+                _doFlowControl = false;
         }
 
         public override int GetAllowedSends()
         {
-            int value = NetUtility.PowOf2Mod(
-                _windowSize - (_sendStart + NetConstants.SequenceNumbers - _windowStart), _windowSize);
-            
+            if (!_doFlowControl)
+                return int.MaxValue;
+
+            int value = _windowSize - NetUtility.PowOf2Mod(
+                _sendStart + NetConstants.SequenceNumbers - _windowStart,
+                _windowSize);
+
             LidgrenException.Assert(value >= 0 && value <= _windowSize);
             return value;
         }
@@ -102,6 +112,13 @@ namespace Lidgren.Network
         // seqNr is the actual nr received
         public override void ReceiveAcknowledge(TimeSpan now, int seqNr)
         {
+            if (!_doFlowControl)
+            {
+                // we have no use for acks on this channel since we don't respect the window anyway
+                _connection.Peer.LogWarning("SuppressUnreliableUnorderedAcks sender/receiver mismatch!");
+                return;
+            }
+
             // late (dupe), on time or early ack?
             int relate = NetUtility.RelativeSequenceNumber(seqNr, _windowStart);
 

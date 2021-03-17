@@ -50,6 +50,8 @@ namespace Lidgren.Network
         internal int _sendBufferSize;
         internal TimeSpan _resendHandshakeInterval;
         internal int _maximumHandshakeAttempts;
+        internal TimeSpan _fragmentGroupTimeout;
+        internal bool _suppressUnreliableUnorderedAcks;
 
         // bad network simulation
         internal float _loss;
@@ -91,6 +93,7 @@ namespace Lidgren.Network
             _maximumConnections = 32;
             _pingInterval = TimeSpan.FromSeconds(4);
             _connectionTimeout = TimeSpan.FromSeconds(25);
+            _fragmentGroupTimeout = TimeSpan.FromSeconds(8);
             _useMessageRecycling = true;
             _resendHandshakeInterval = TimeSpan.FromSeconds(3);
             _maximumHandshakeAttempts = 5;
@@ -100,7 +103,7 @@ namespace Lidgren.Network
             _autoExpandMTU = false;
             _expandMTUFrequency = TimeSpan.FromSeconds(2);
             _expandMTUFailAttempts = 5;
-            UnreliableSizeBehaviour = NetUnreliableSizeBehaviour.IgnoreMTU;
+            UnreliableSizeBehaviour = NetUnreliableSizeBehaviour.NormalFragmentation;
 
             _loss = 0f;
             _minimumOneWayLatency = TimeSpan.Zero;
@@ -248,7 +251,7 @@ namespace Lidgren.Network
         }
 
         /// <summary>
-        /// Gets or sets the number of seconds timeout will be postponed on a successful ping/pong.
+        /// Gets or sets the timeout that will be postponed on a successful ping/pong.
         /// </summary>
         public TimeSpan ConnectionTimeout
         {
@@ -259,6 +262,15 @@ namespace Lidgren.Network
                     throw new LidgrenException("Connection timeout cannot be lower than ping interval!");
                 _connectionTimeout = value;
             }
+        }
+
+        /// <summary>
+        /// Gets or sets the timeout used to drop inactive fragment groups.
+        /// </summary>
+        public TimeSpan FragmentGroupTimeout
+        {
+            get => _fragmentGroupTimeout;
+            set => _fragmentGroupTimeout = value;
         }
 
         /// <summary>
@@ -285,6 +297,21 @@ namespace Lidgren.Network
         {
             get => _autoFlushSendQueue;
             set => _autoFlushSendQueue = value;
+        }
+
+        /// <summary>
+        /// If true, will not send acks for unreliable unordered messages. 
+        /// This will save bandwidth but disable flow control and duplicate detection for this type of messages.
+        /// </summary>
+        public bool SuppressUnreliableUnorderedAcks
+        {
+            get => _suppressUnreliableUnorderedAcks;
+            set
+            {
+                if (_isLocked)
+                    throw new LidgrenException(IsLockedMessage);
+                _suppressUnreliableUnorderedAcks = value;
+            }
         }
 
         /// <summary>

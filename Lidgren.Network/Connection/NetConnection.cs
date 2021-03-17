@@ -21,6 +21,11 @@ namespace Lidgren.Network
         /// </summary>
         private const uint MessageCoalesceFrames = 4;
 
+        /// <summary>
+        /// Number of heartbeats to wait before trying to reclaim fragments.
+        /// </summary>
+        private const uint ReclaimFragmentsFrames = 256;
+
         private bool _isDisposed;
         private int _sendBufferWritePtr;
         private int _sendBufferNumMessages;
@@ -30,6 +35,7 @@ namespace Lidgren.Network
         internal NetQueue<(NetMessageType Type, int SequenceNumber)> _queuedOutgoingAcks;
         internal NetQueue<(NetMessageType Type, int SequenceNumber)> _queuedIncomingAcks;
         internal Dictionary<int, ReceivedFragmentGroup> _receivedFragmentGroups;
+        private List<int> _fragmentGroupsToDrop;
 
         internal string DebuggerDisplay =>
             $"RemoteUniqueIdentifier = {RemoteUniqueIdentifier}, RemoteEndPoint = {RemoteEndPoint}";
@@ -94,6 +100,7 @@ namespace Lidgren.Network
             _queuedOutgoingAcks = new NetQueue<(NetMessageType, int)>(16);
             _queuedIncomingAcks = new NetQueue<(NetMessageType, int)>(16);
             _receivedFragmentGroups = new Dictionary<int, ReceivedFragmentGroup>();
+            _fragmentGroupsToDrop = new List<int>();
             Statistics = new NetConnectionStatistics(this);
             AverageRoundtripTime = default;
             CurrentMTU = _peerConfiguration.MaximumTransmissionUnit;
@@ -144,6 +151,32 @@ namespace Lidgren.Network
             LidgrenException.Assert(
                 Status != NetConnectionStatus.InitiatedConnect &&
                 Status != NetConnectionStatus.RespondedConnect);
+
+            if (NetUtility.PowOf2Mod(frameCounter, ReclaimFragmentsFrames) == 0)
+            {
+                foreach ((int groupId, ReceivedFragmentGroup group) in _receivedFragmentGroups)
+                {
+                    TimeSpan idleTime = now - group.LastReceived;
+                    if (idleTime >= Peer.Configuration.FragmentGroupTimeout)
+                    {
+                        _fragmentGroupsToDrop.Add(groupId);
+                    }
+                }
+
+                foreach (int groupId in _fragmentGroupsToDrop)
+                {
+                    if (_receivedFragmentGroups.Remove(groupId, out ReceivedFragmentGroup? group))
+                    {
+                        // TODO: recycle?
+                    }
+                }
+
+                if (_fragmentGroupsToDrop.Count > 0)
+                {
+                    Peer.LogWarning(_fragmentGroupsToDrop.Count + " fragment groups timed out at " + now);
+                }
+                _fragmentGroupsToDrop.Clear();
+            }
 
             if (NetUtility.PowOf2Mod(frameCounter, InfrequentEventsSkipFrames) == 0)
             {
@@ -352,7 +385,7 @@ namespace Lidgren.Network
                     {
                         NetDeliveryMethod.Unreliable or
                         NetDeliveryMethod.UnreliableSequenced =>
-                        new NetUnreliableSenderChannel(this, NetUtility.GetWindowSize(method)),
+                        new NetUnreliableSenderChannel(this, NetUtility.GetWindowSize(method), method),
 
                         NetDeliveryMethod.ReliableUnordered or
                         NetDeliveryMethod.ReliableSequenced or

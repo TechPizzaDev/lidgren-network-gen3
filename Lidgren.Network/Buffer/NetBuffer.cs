@@ -17,7 +17,7 @@ namespace Lidgren.Network
         private int _bitPosition;
         private int _bitLength;
         private byte[] _buffer;
-        private bool _recyclableBuffer;
+        private bool _isRecyclableBuffer;
         private bool _isDisposed;
 
         public ArrayPool<byte> StoragePool { get; }
@@ -72,7 +72,7 @@ namespace Lidgren.Network
 
                     byte[] newBuffer = StoragePool.Rent(value);
                     _buffer.AsMemory(0, ByteLength).CopyTo(newBuffer);
-                    SetBuffer(newBuffer);
+                    SetBuffer(newBuffer, true);
                 }
             }
         }
@@ -105,15 +105,16 @@ namespace Lidgren.Network
             return _buffer;
         }
 
-        public void SetBuffer(byte[] buffer, bool isRecyclable = true)
+        public void SetBuffer(byte[] buffer, bool isRecyclable)
         {
-            if (_recyclableBuffer)
+            if (_isRecyclableBuffer)
             {
                 StoragePool.Return(_buffer);
+                _buffer = Array.Empty<byte>();
             }
 
             _buffer = buffer ?? throw new ArgumentNullException(nameof(buffer));
-            _recyclableBuffer = isRecyclable;
+            _isRecyclableBuffer = isRecyclable;
         }
 
         public void TrimExcess()
@@ -124,13 +125,13 @@ namespace Lidgren.Network
 
         private void Recycle()
         {
-            if (_recyclableBuffer)
+            if (_isRecyclableBuffer)
             {
                 StoragePool.Return(_buffer);
                 _buffer = Array.Empty<byte>();
                 _bitLength = 0;
                 _bitPosition = 0;
-                _recyclableBuffer = false;
+                _isRecyclableBuffer = false;
             }
         }
 

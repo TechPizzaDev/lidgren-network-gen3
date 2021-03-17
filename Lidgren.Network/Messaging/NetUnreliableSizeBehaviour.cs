@@ -11,10 +11,9 @@ namespace Lidgren.Network
         /// </summary>
         IgnoreMTU = 0,
 
-        // TODO: reclaim memory from fragments please
         /// <summary>
         /// Use normal fragmentation for unreliable messages.
-        /// If a fragment is dropped, memory for received fragments is never reclaimed.
+        /// If a fragment is dropped, memory is reclaimed after <see cref="NetPeerConfiguration.FragmentGroupTimeout"/>.
         /// </summary>
         NormalFragmentation = 1,
 

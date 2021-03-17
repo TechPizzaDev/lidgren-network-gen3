@@ -14,7 +14,7 @@ namespace UnitTests
 
             string appId = "NetStreamingMessages";
             int port = 20002;
-            int clientCount = 16;
+            int clientCount = 1;
 
             var serverThread = new Thread(() =>
             {
@@ -120,9 +120,19 @@ namespace UnitTests
                         Thread.Sleep(1);
                     }
 
-                    NetOutgoingMessage outMsg = client.CreateMessage();
-                    outMsg.WritePadBytes(1024 * 1024 * 16);
-                    connection.SendMessage(outMsg, NetDeliveryMethod.ReliableOrdered, 1);
+                    Task.Run(() =>
+                    {
+                        try
+                        {
+                            NetOutgoingMessage outMsg = client.CreateMessage();
+                            outMsg.WritePadBytes(1024 * 1024 * 128);
+                            var r = connection.SendMessage(outMsg, NetDeliveryMethod.ReliableOrdered, 0);
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine(ex);
+                        }
+                    });
 
                     bool stop = false;
                     while (!stop && client.TryReadMessage(60000, out var message))
