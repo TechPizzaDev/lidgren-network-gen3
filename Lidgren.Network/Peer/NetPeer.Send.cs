@@ -25,7 +25,7 @@ namespace Lidgren.Network
             int mtu = NetPeerConfiguration.DefaultMTU;
             recipientCount = 0;
 
-            foreach (var conn in connections.AsListEnumerator())
+            foreach (NetConnection? conn in connections.AsListEnumerator())
             {
                 if (conn != null)
                 {
@@ -74,7 +74,7 @@ namespace Lidgren.Network
                 if (recipient.Status != NetConnectionStatus.Connected)
                     return NetSendResult.FailedNotConnected;
 
-                var recipients = NetConnectionListPool.Rent(1);
+                List<NetConnection> recipients = NetConnectionListPool.Rent(1);
                 try
                 {
                     recipients.Add(recipient);
@@ -199,7 +199,7 @@ namespace Lidgren.Network
         }
 
         /// <summary>
-        /// Send a message to an unconnected host.
+        /// Send a message to an unconnected recipients.
         /// </summary>
         public void SendUnconnectedMessage(NetOutgoingMessage message, IEnumerable<IPEndPoint?> recipients)
         {
@@ -215,19 +215,19 @@ namespace Lidgren.Network
             message._isSent = true;
 
             int recipientCount = 0;
-            foreach (var recipient in recipients.AsListEnumerator())
+            foreach (IPEndPoint? recipient in recipients.AsListEnumerator())
             {
                 if (recipient != null)
                     recipientCount++;
             }
             Interlocked.Add(ref message._recyclingCount, recipientCount);
 
-            foreach (var endPoint in recipients.AsListEnumerator())
+            foreach (IPEndPoint? endPoint in recipients.AsListEnumerator())
             {
-                if (endPoint == null)
-                    continue;
-
-                UnsentUnconnectedMessages.Enqueue((endPoint, message));
+                if (endPoint != null)
+                {
+                    UnsentUnconnectedMessages.Enqueue((endPoint, message));
+                }
             }
         }
 

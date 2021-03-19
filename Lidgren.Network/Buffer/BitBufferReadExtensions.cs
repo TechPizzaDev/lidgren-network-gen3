@@ -756,7 +756,10 @@ namespace Lidgren.Network
         /// Tries to read a <see cref="string"/>.
         /// </summary>
         /// <returns>Whether a string was successfully read.</returns>
-        public static bool ReadString(this IBitBuffer buffer, [MaybeNullWhen(false)] out string result, bool replaceInvalidSequences = true)
+        public static bool ReadString(
+            this IBitBuffer buffer, 
+            [MaybeNullWhen(false)] out string result,
+            bool replaceInvalidSequences = true)
         {
             NetBlockReader reader = buffer.OpenBlockReader();
             if (reader.BlockBytesLeft != 0)

@@ -12,62 +12,62 @@ namespace Lidgren.Network
 		//
 
 		/// <summary>
-		/// Error; this value should never appear
+		/// Error; this value should never appear.
 		/// </summary>
 		Error = 0,
 
 		/// <summary>
-		/// Status for a connection changed
+		/// The connection status has changed.
 		/// </summary>
 		StatusChanged = 1 << 0,			// Data (string)
 
 		/// <summary>
-		/// Data sent using SendUnconnectedMessage
+		/// Data sent using SendUnconnectedMessage.
 		/// </summary>
 		UnconnectedData = 1 << 1,		// Data					Based on data received
 
 		/// <summary>
-		/// Connection approval is needed
+		/// Connection approval is needed.
 		/// </summary>
 		ConnectionApproval = 1 << 2,	// Data
 
 		/// <summary>
-		/// Application data
+		/// Application data.
 		/// </summary>
 		Data = 1 << 3,					// Data					Based on data received
 
 		/// <summary>
-		/// Receipt of delivery
+		/// Receipt of delivery.
 		/// </summary>
 		Receipt = 1 << 4,				// Data
 
 		/// <summary>
-		/// Discovery request for a response
+		/// Discovery request for a response.
 		/// </summary>
 		DiscoveryRequest = 1 << 5,		// (no data)
 
 		/// <summary>
-		/// Discovery response to a request
+		/// Discovery response to a request.
 		/// </summary>
 		DiscoveryResponse = 1 << 6,		// Data
 
 		/// <summary>
-		/// Verbose debug message
+		/// Verbose debug message.
 		/// </summary>
 		VerboseDebugMessage = 1 << 7,	// Data (string)
 
 		/// <summary>
-		/// Debug message
+		/// Debug message.
 		/// </summary>
 		DebugMessage = 1 << 8,			// Data (string)
 
 		/// <summary>
-		/// Warning message
+		/// Warning message.
 		/// </summary>
 		WarningMessage = 1 << 9,		// Data (string)
 
 		/// <summary>
-		/// Error message
+		/// Error message.
 		/// </summary>
 		ErrorMessage = 1 << 10,			// Data (string)
 

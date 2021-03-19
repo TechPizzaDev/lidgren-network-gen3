@@ -29,7 +29,7 @@ namespace Lidgren.Network
         /// </summary>
         /// <param name="capacity">The minimum capacity of the list.</param>
         /// <returns>The rented list.</returns>
-        public static List<NetConnection> Rent(int capacity = 0)
+        public static List<NetConnection> Rent(int capacity)
         {
             Debug.Assert(capacity >= 0);
 
@@ -61,12 +61,12 @@ namespace Lidgren.Network
             int capacity = list.Capacity;
             int bucketIndex = capacity == 0 ? 0 : SelectBucketIndex(capacity);
             int bucketSize = GetMaxSizeForBucket(bucketIndex);
-            int bucketsPerSize = Math.Max(1024 / bucketSize, 4);
+            int bucketCapacity = Math.Max(1024 * 4 / bucketSize, 4);
 
             Bucket bucket = bucketIndex < Buckets.Length ? Buckets[bucketIndex] : LargeBucket;
             lock (bucket)
             {
-                if (bucket.Count < bucketsPerSize)
+                if (bucket.Count < bucketCapacity)
                     bucket.Push(list);
             }
         }
@@ -84,13 +84,13 @@ namespace Lidgren.Network
             if (peer == null)
                 throw new ArgumentNullException(nameof(peer));
 
-            var connections = peer.Connections;
+            List<NetConnection> connections = peer.Connections;
             lock (connections)
             {
                 int count = connections.Count;
                 if (count > 0)
                 {
-                    var list = Rent(count);
+                    List<NetConnection> list = Rent(count);
                     list.AddRange(connections);
                     return list;
                 }

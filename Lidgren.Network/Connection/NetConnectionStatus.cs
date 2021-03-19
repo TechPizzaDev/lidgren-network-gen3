@@ -22,14 +22,15 @@ namespace Lidgren.Network
         ReceivedInitiation,
 
         /// <summary>
-        /// Connect was received and ApprovalMessage released to the application; awaiting Approve() or Deny()
+        /// Connect was received and <see cref="NetIncomingMessageType.ConnectionApproval"/> released to the application.
+        /// Awaiting <see cref="NetConnection.Approve"/> or <see cref="NetConnection.Deny"/>.
         /// </summary>
-        RespondedAwaitingApproval, // We got Connect, released ApprovalMessage
+        RespondedAwaitingApproval,
 
         /// <summary>
         /// Connect was received and ConnectResponse has been sent; waiting for ConnectionEstablished
         /// </summary>
-        RespondedConnect, // we got Connect, sent ConnectResponse
+        RespondedConnect, 
 
         /// <summary>
         /// Connected
