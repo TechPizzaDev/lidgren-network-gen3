@@ -70,9 +70,11 @@ namespace Lidgren.Network
             if (message.BitLength >= ushort.MaxValue &&
                 _connection._peerConfiguration.UnreliableSizeBehaviour == NetUnreliableSizeBehaviour.IgnoreMTU)
             {
-                _connection.Peer.LogError(string.Format(
-                    "Unreliable message size exceeded {0} bits ({1})",
-                    ushort.MaxValue, message.BitLength));
+                _connection.Peer.LogError(NetLogMessage.FromValues(NetLogCode.MessageSizeExceeded, 
+                    endPoint: _connection, 
+                    value: message.BitLength,
+                    maxValue: ushort.MaxValue));
+                
                 return NetSendResult.Dropped;
             }
 
@@ -115,7 +117,7 @@ namespace Lidgren.Network
             if (!_doFlowControl)
             {
                 // we have no use for acks on this channel since we don't respect the window anyway
-                _connection.Peer.LogWarning("SuppressUnreliableUnorderedAcks sender/receiver mismatch!");
+                _connection.Peer.LogWarning(new NetLogMessage(NetLogCode.SuppressedUnreliableAck, endPoint: _connection));
                 return;
             }
 

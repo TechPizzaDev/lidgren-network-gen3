@@ -58,7 +58,8 @@ namespace Lidgren.Network
                     nextSeqNr++;
                     nextSeqNr = NetUtility.PowOf2Mod(nextSeqNr, _windowSize);
 
-                    Peer.LogVerbose("Releasing withheld message #" + withheldMessage);
+                    Peer.LogVerbose(NetLogMessage.FromValues(NetLogCode.WithheldMessage,
+                        message, value: _windowStart, maxValue: _windowSize));
                     Peer.ReleaseMessage(withheldMessage);
                 }
                 return;
@@ -66,33 +67,32 @@ namespace Lidgren.Network
 
             if (relate < 0)
             {
-                Peer.LogVerbose("Received message #" + message.SequenceNumber + " DROPPING DUPLICATE");
-                // duplicate
+                Peer.LogVerbose(NetLogMessage.FromValues(NetLogCode.DuplicateMessage,
+                    message, value: _windowStart, maxValue: _windowSize));
                 return;
             }
 
             // relate > 0 = early message
             if (relate > _windowSize)
             {
-                // too early message!
-                Peer.LogDebug("Received " + message.ToString() + " TOO EARLY! Expected " + _windowStart);
+                Peer.LogVerbose(NetLogMessage.FromValues(NetLogCode.TooEarlyMessage,
+                    message, value: _windowStart, maxValue: _windowSize));
                 return;
             }
 
             int messageIndex = NetUtility.PowOf2Mod(message.SequenceNumber, _windowSize);
-
             _earlyReceived.Set(messageIndex, true);
-            Peer.LogVerbose("Received " + message.ToString() + " WITHHOLDING, waiting for " + _windowStart);
 
             ref NetIncomingMessage? messageSlot = ref WithheldMessages[messageIndex];
-
-            // the amount of messages may overflow within a given window so just dump existing message
             if (messageSlot != null)
             {
+                // the amount of messages may overflow within a given window so just dump existing message
                 Peer.Recycle(messageSlot);
             }
-
             messageSlot = message.ToIncomingMessage(Peer);
+
+            Peer.LogVerbose(NetLogMessage.FromValues(NetLogCode.EarlyMessage,
+                message, value: _windowStart, maxValue: _windowSize));
         }
     }
 }

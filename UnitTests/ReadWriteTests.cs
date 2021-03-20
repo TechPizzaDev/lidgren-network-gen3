@@ -85,6 +85,7 @@ namespace UnitTests
 
             NetOutgoingMessage tmp = peer.CreateMessage();
             tmp.Write(42, 14);
+            tmp.BitPosition = 0;
 
             msg.Write(tmp);
             msg.Write(tmp);

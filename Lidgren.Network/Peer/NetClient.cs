@@ -53,33 +53,36 @@ namespace Lidgren.Network
                     throw new InvalidOperationException("Connect attempt failed; Already connected");
             }
 
-            if (Handshakes.Count > 0)
+            if (!Handshakes.IsEmpty)
                 throw new InvalidOperationException("Connect attempt failed; Handshake already in progress");
 
             return base.Connect(remoteEndPoint, hailMessage);
         }
 
         /// <summary>
-        /// Disconnect from server
+        /// Disconnect from server.
         /// </summary>
-        /// <param name="byeMessage">reason for disconnect</param>
-        public void Disconnect(string byeMessage)
+        /// <param name="reason">Message to send with the disconnect.</param>
+        public void Disconnect(NetOutgoingMessage? reason)
         {
             var connection = ServerConnection;
             if (connection != null)
             {
-                connection.Disconnect(byeMessage);
+                connection.Disconnect(reason);
             }
             else
             {
-                if (Handshakes.Count > 0)
+                if (Handshakes.IsEmpty)
                 {
-                    LogVerbose("Aborting connection attempt");
-                    foreach (var hs in Handshakes)
-                        hs.Value.Disconnect(byeMessage);
+                    LogDebug(new NetLogMessage(NetLogCode.NotConnected));
                     return;
                 }
-                LogWarning("Disconnect requested when not connected!");
+
+                LogVerbose(new NetLogMessage(NetLogCode.AbortingConnectionAttempt));
+                foreach (var hs in Handshakes.Values)
+                {
+                    hs.Disconnect(reason);
+                }
             }
         }
 
@@ -91,7 +94,7 @@ namespace Lidgren.Network
             var serverConnection = ServerConnection;
             if (serverConnection == null)
             {
-                LogWarning("Cannot send message, no server connection!");
+                LogWarning(new NetLogMessage(NetLogCode.NotConnected));
                 return NetSendResult.FailedNotConnected;
             }
             return serverConnection.SendMessage(msg, method, 0);
@@ -105,7 +108,7 @@ namespace Lidgren.Network
             var serverConnection = ServerConnection;
             if (serverConnection == null)
             {
-                LogWarning("Cannot send message, no server connection!");
+                LogWarning(new NetLogMessage(NetLogCode.NotConnected));
                 return NetSendResult.FailedNotConnected;
             }
             return serverConnection.SendMessage(msg, method, sequenceChannel);

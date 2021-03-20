@@ -13,6 +13,8 @@ using System.Threading;
 using System.Buffers;
 using System.Runtime.CompilerServices;
 using System.Net.Sockets;
+using System.IO;
+using System.IO.MemoryMappedFiles;
 
 namespace UnitTests
 {
@@ -41,10 +43,24 @@ namespace UnitTests
 
             var config = new NetPeerConfiguration("unittests");
             config.EnableMessageType(NetIncomingMessageType.UnconnectedData);
-            config.EnableUPnP = true;
 
             var peer = new NetPeer(config);
-            peer.Start(); // needed for initialization
+            peer.Start();
+
+            peer.UPnP.DiscoverAsync().ContinueWith(async (t) =>
+            {
+                if (t.Result.Status == UPnPStatus.Available)
+                {
+                    var upnp = t.Result.UPnP;
+                    int port = 9000;
+
+                    Console.WriteLine("forwarded: " + await upnp.ForwardPortAsync(port, port, "hello"));
+
+                    await Task.Delay(3000);
+
+                    Console.WriteLine("deleted: " + await upnp.DeleteForwardingRuleAsync(port));
+                }
+            });
 
             Console.WriteLine("Unique identifier is " + NetUtility.ToHexString(peer.UniqueIdentifier));
 
@@ -67,17 +83,18 @@ namespace UnitTests
             {
                 var thread = new Thread(() =>
                 {
+                    void Peer_ErrorMessage(NetPeer sender, NetLogLevel level, in NetLogMessage message)
+                    {
+                        Console.WriteLine("Peer " + level + ": " + message.Code);
+                    }
+                    peer.DebugMessage += Peer_ErrorMessage;
+                    peer.WarningMessage += Peer_ErrorMessage;
+                    peer.ErrorMessage += Peer_ErrorMessage;
+
                     while (peer.TryReadMessage(readTimeout, out var message))
                     {
                         switch (message.MessageType)
                         {
-                            case NetIncomingMessageType.DebugMessage:
-                            case NetIncomingMessageType.VerboseDebugMessage:
-                            case NetIncomingMessageType.WarningMessage:
-                            case NetIncomingMessageType.ErrorMessage:
-                                Console.WriteLine("Peer message: " + message.ReadString());
-                                break;
-
                             case NetIncomingMessageType.Error:
                                 throw new Exception("Received error!");
 

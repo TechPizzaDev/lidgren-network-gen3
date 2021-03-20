@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
@@ -22,10 +23,18 @@ namespace UnitTests
                 {
                     AcceptIncomingConnections = true,
                     Port = port,
-                    AutoExpandMTU = true
+                    AutoExpandMTU = true,
                 };
-                config.DisableMessageType(NetIncomingMessageType.DebugMessage);
+                config.EnableMessageType(NetIncomingMessageType.ConnectionApproval);
                 var server = new NetServer(config);
+
+                void Server_ErrorMessage(NetPeer sender, NetLogLevel level, in NetLogMessage message)
+                {
+                    Console.WriteLine("Server " + level + ": " + message.Code);
+                }
+                server.DebugMessage += Server_ErrorMessage;
+                server.WarningMessage += Server_ErrorMessage;
+                server.ErrorMessage += Server_ErrorMessage;
                 server.Start();
 
                 Task.Run(() =>
@@ -45,16 +54,12 @@ namespace UnitTests
                 {
                     switch (message.MessageType)
                     {
+                        case NetIncomingMessageType.ConnectionApproval:
+                            message.SenderConnection?.Approve(server.CreateMessage("approved!"));
+                            break;
+
                         case NetIncomingMessageType.StatusChanged:
                             Console.WriteLine("Server Status: " + message.ReadEnum<NetConnectionStatus>());
-                            break;
-
-                        case NetIncomingMessageType.DebugMessage:
-                            Console.WriteLine("Server Debug: " + message.ReadString());
-                            break;
-
-                        case NetIncomingMessageType.WarningMessage:
-                            Console.WriteLine("Server Warning: " + message.ReadString());
                             break;
 
                         case NetIncomingMessageType.Data:
@@ -65,9 +70,6 @@ namespace UnitTests
                             count--;
                             break;
 
-                        case NetIncomingMessageType.ErrorMessage:
-                            Console.WriteLine("Server Error: " + message.ReadString());
-                            break;
 
                         default:
                             Console.WriteLine("Server " + message.MessageType);
@@ -75,8 +77,17 @@ namespace UnitTests
                     }
                 }
 
-                Thread.Sleep(100);
-                server.Shutdown(null);
+                List<NetConnection> connections = new();
+                server.GetConnections(connections);
+                foreach (var con in connections)
+                {
+                    var msg = server.CreateMessage("this is library");
+                    con.Disconnect(msg);
+                }
+
+                Console.WriteLine("Server finished waiting");
+                var shutMsg = server.CreateMessage("this is not library anymore");
+                server.Shutdown(shutMsg);
             });
 
             Thread[] clientThreads = new Thread[clientCount];
@@ -92,8 +103,15 @@ namespace UnitTests
                         AutoExpandMTU = true,
                         SendBufferSize = 1024 * 1024
                     };
-                    config.DisableMessageType(NetIncomingMessageType.DebugMessage);
                     var client = new NetClient(config);
+
+                    void Client_ErrorMessage(NetPeer sender, NetLogLevel level, in NetLogMessage message)
+                    {
+                        Console.WriteLine("Client " + level + ": " + message.Code);
+                    }
+                    client.DebugMessage += Client_ErrorMessage;
+                    client.WarningMessage += Client_ErrorMessage;
+                    client.ErrorMessage += Client_ErrorMessage;
                     client.Start();
 
                     Task.Run(() =>
@@ -113,10 +131,34 @@ namespace UnitTests
 
                     NetConnection connection = client.Connect(new IPEndPoint(IPAddress.Loopback, port));
 
+                    bool stop = false;
+                    void Connection_StatusChanged(NetConnection connection, NetConnectionStatus status, NetBuffer? reason)
+                    {
+                        string print = "Client Status: " + status;
+                        if (status == NetConnectionStatus.Disconnected)
+                        {
+                            print += " (" + reason?.ReadString() + ")";
+                            stop = true;
+                        }
+                        else if (status == NetConnectionStatus.Connected)
+                        {
+                            print += " (" + connection?.RemoteHailMessage?.ReadString() + ")";
+                        }
+                        Console.WriteLine(print);
+                    }
+                    connection.StatusChanged += Connection_StatusChanged;
+
                     while (connection.Status != NetConnectionStatus.Connected)
                     {
                         if (connection.Status == NetConnectionStatus.Disconnected)
-                            throw new Exception("Failed to connect.");
+                        {
+                            if (client.TryReadMessage(out var msg))
+                            {
+                                if (msg.MessageType == NetIncomingMessageType.StatusChanged)
+                                    Console.WriteLine(msg.ReadEnum<NetConnectionStatus>() + ": " + msg.ReadString());
+                            }
+                            return;
+                        }
                         Thread.Sleep(1);
                     }
 
@@ -134,31 +176,14 @@ namespace UnitTests
                         }
                     });
 
-                    bool stop = false;
                     while (!stop && client.TryReadMessage(60000, out var message))
                     {
                         switch (message.MessageType)
                         {
-                            case NetIncomingMessageType.StatusChanged:
-                                Console.WriteLine("Client Status: " + message.ReadEnum<NetConnectionStatus>());
-                                break;
-
-                            case NetIncomingMessageType.DebugMessage:
-                                Console.WriteLine("Client Debug: " + message.ReadString());
-                                break;
-
-                            case NetIncomingMessageType.WarningMessage:
-                                Console.WriteLine("Client Warning: " + message.ReadString());
-                                break;
-
                             case NetIncomingMessageType.Data:
                                 Console.WriteLine("Client Data: " + message.ReadString());
-                                client.Shutdown(null);
+                                client.Shutdown();
                                 stop = true;
-                                break;
-
-                            case NetIncomingMessageType.ErrorMessage:
-                                Console.WriteLine("Client Error: " + message.ReadString());
                                 break;
 
                             default:

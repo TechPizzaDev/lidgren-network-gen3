@@ -41,8 +41,8 @@ namespace Lidgren.Network
             {
                 if (MWCRandom.Global.NextSingle() < loss)
                 {
-                    LogVerbose("Sending packet " + byteCount + " bytes - SIMULATED LOST!");
-                    return false; // packet "lost"
+                    LogDebug(new NetLogMessage(NetLogCode.SimulatedLoss, endPoint: target));
+                    return false;
                 }
             }
 
@@ -52,9 +52,8 @@ namespace Lidgren.Network
                 Configuration._randomOneWayLatency == TimeSpan.Zero)
             {
                 // no latency simulation
-
-                //LogVerbose("Sending packet " + numBytes + " bytes");
                 var (wasSent, connectionReset) = ActuallySendPacket(_sendBuffer, byteCount, target);
+
                 // TODO: handle 'wasSent == false' better?
 
                 if ((!wasSent && !connectionReset) ||
@@ -82,9 +81,10 @@ namespace Lidgren.Network
                 // Enqueue delayed packet
                 DelayedPacket p = new(data, now + delay, target);
                 DelayedPackets.Add(p);
+
+                LogDebug(NetLogMessage.FromTime(NetLogCode.SimulatedDelay, endPoint: target, time: delay));
             }
 
-            // LogVerbose("Sending packet " + numBytes + " bytes - delayed " + NetTime.ToReadable(delay));
             return false;
         }
 
@@ -109,23 +109,19 @@ namespace Lidgren.Network
 
         private void FlushDelayedPackets()
         {
+            if (Socket == null)
+                return;
+
             foreach (DelayedPacket p in DelayedPackets)
             {
-                try
-                {
-                    ActuallySendPacket(p.Data, p.Data.Length, p.Target);
-                }
-                catch (Exception ex)
-                {
-                    LogWarning("Failed to flush delayed packet: " + ex);
-                }
+                ActuallySendPacket(p.Data, p.Data.Length, p.Target);
             }
             DelayedPackets.Clear();
         }
 
         // TODO: replace byte[] with Span in the future (held back by Socket.SendTo)
         // https://github.com/dotnet/runtime/issues/33418
-        internal (bool Sent, bool ConnectionReset) ActuallySendPacket(byte[] data, int numBytes, IPEndPoint target)
+        internal (bool Sent, bool ConnectionReset) ActuallySendPacket(byte[] data, int byteCount, IPEndPoint target)
         {
             if (Socket == null)
                 throw new InvalidOperationException("No socket bound.");
@@ -161,11 +157,13 @@ namespace Lidgren.Network
                     _targetCopy.Address = target.Address;
                 }
 
-                int bytesSent = Socket.SendTo(data, 0, numBytes, SocketFlags.None, _targetCopy);
-                if (numBytes != bytesSent)
+                int bytesSent = Socket.SendTo(data, 0, byteCount, SocketFlags.None, _targetCopy);
+                if (byteCount != bytesSent)
                 {
-                    LogWarning(
-                        "Failed to send the full " + numBytes + "; only " + bytesSent + " bytes sent in packet!");
+                    LogWarning(NetLogMessage.FromValues(NetLogCode.FullSendFailure,
+                        endPoint: target,
+                        value: bytesSent,
+                        maxValue: byteCount));
                 }
                 //LogDebug("Sent " + numBytes + " bytes");
             }
@@ -175,8 +173,7 @@ namespace Lidgren.Network
                 {
                     case SocketError.WouldBlock:
                         // send buffer full?
-                        LogWarning(
-                            "Socket threw exception; would block - send buffer full? Increase in NetPeerConfiguration");
+                        LogWarning(new NetLogMessage(NetLogCode.SocketWouldBlock, sx));
                         return (false, false);
 
                     case SocketError.ConnectionReset:
@@ -184,13 +181,13 @@ namespace Lidgren.Network
                         return (false, true);
 
                     default:
-                        LogError("Failed to send packet: " + sx);
+                        LogError(new NetLogMessage(NetLogCode.SendFailure, sx, target));
                         break;
                 }
             }
             catch (Exception ex)
             {
-                LogError("Failed to send packet: " + ex);
+                LogError(new NetLogMessage(NetLogCode.SendFailure, ex, target));
             }
             finally
             {
@@ -200,7 +197,7 @@ namespace Lidgren.Network
             return (true, false);
         }
 
-        internal bool SendMTUPacket(int numBytes, IPEndPoint target)
+        internal bool SendMTUPacket(int byteCount, IPEndPoint target)
         {
             if (Socket == null)
                 throw new InvalidOperationException("No socket bound.");
@@ -209,11 +206,15 @@ namespace Lidgren.Network
             {
                 Socket.DontFragment = true;
 
-                int bytesSent = Socket.SendTo(_sendBuffer, 0, numBytes, SocketFlags.None, target);
-                if (numBytes != bytesSent)
-                    LogWarning("Failed to send the full " + numBytes + "; only " + bytesSent + " bytes sent in packet!");
-
-                Statistics.PacketSent(numBytes, 1);
+                int bytesSent = Socket.SendTo(_sendBuffer, 0, byteCount, SocketFlags.None, target);
+                if (byteCount != bytesSent)
+                {
+                    LogWarning(NetLogMessage.FromValues(NetLogCode.FullSendFailure,
+                        endPoint: target,
+                        value: bytesSent,
+                        maxValue: byteCount));
+                }
+                Statistics.PacketSent(byteCount, 1);
             }
             catch (SocketException sx)
             {
@@ -224,21 +225,20 @@ namespace Lidgren.Network
 
                     case SocketError.WouldBlock:
                         // send buffer full?
-                        LogWarning(
-                            "Socket threw exception; would block - send buffer full? Increase in NetPeerConfiguration");
+                        LogError(new NetLogMessage(NetLogCode.SocketWouldBlock, sx, target));
                         return true;
 
                     case SocketError.ConnectionReset:
                         return true;
 
                     default:
-                        LogError("Failed to send packet: (" + sx.SocketErrorCode + ") " + sx);
+                        LogError(new NetLogMessage(NetLogCode.SendFailure, sx, target));
                         break;
                 }
             }
             catch (Exception ex)
             {
-                LogError("Failed to send packet: " + ex);
+                LogError(new NetLogMessage(NetLogCode.SendFailure, ex, target));
             }
             finally
             {

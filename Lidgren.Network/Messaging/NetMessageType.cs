@@ -156,8 +156,12 @@ namespace Lidgren.Network
         NatPunchMessage = 141, // send between peers
         NatIntroduction = 142, // send to master server
         ExpandMTURequest = 143,
-        ExpandMTUSuccess = 144
-        
+        ExpandMTUSuccess = 144,
+        TimedOut = 145,
+        InvalidHandshake = 146,
+        WrongAppIdentifier = 147,
+        ConnectTimedOut = 148,
+
         // 111 left
     }
 }

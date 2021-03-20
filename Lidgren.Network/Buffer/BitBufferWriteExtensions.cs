@@ -525,7 +525,8 @@ namespace Lidgren.Network
         /// </summary>
         public static void Write(this IBitBuffer buffer, IBitBuffer sourceBuffer)
         {
-            buffer.Write(sourceBuffer.GetBuffer(), 0, sourceBuffer.BitLength);
+            int bitPosition = sourceBuffer.BitPosition;
+            buffer.Write(sourceBuffer.GetBuffer(), bitPosition, sourceBuffer.BitLength - bitPosition);
         }
 
         /// <summary>

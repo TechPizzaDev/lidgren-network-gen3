@@ -6,9 +6,10 @@ namespace Lidgren.Network
 {
     internal class ReceivedFragmentGroup
     {
-        public byte[] Data { get; }
-        public NetBitArray ReceivedChunks { get; }
-        public TimeSpan LastReceived { get; set; } // TODO: discard after certain age
+        public byte[] Data;
+        public NetBitArray ReceivedChunks;
+        public int Count;
+        public TimeSpan LastReceived; // TODO: discard after certain age
 
         public ReceivedFragmentGroup(byte[] data, NetBitArray receivedChunks)
         {
@@ -111,7 +112,7 @@ namespace Lidgren.Network
                 out int chunkByteSize,
                 out int chunkNumber))
             {
-                LogWarning("Failed to read fragmentation header.");
+                LogWarning(new NetLogMessage(NetLogCode.InvalidFragmentHeader, message));
                 return false;
             }
 
@@ -129,7 +130,8 @@ namespace Lidgren.Network
 
             if (chunkNumber >= totalChunkCount)
             {
-                LogWarning("Index out of bounds for chunk " + chunkNumber + " (total chunks " + totalChunkCount + ")");
+                LogWarning(NetLogMessage.FromValues(NetLogCode.InvalidFragmentIndex,
+                    message, null, value: chunkNumber, maxValue: totalChunkCount));
                 return false;
             }
 
@@ -141,27 +143,34 @@ namespace Lidgren.Network
                 connection._receivedFragmentGroups.Add(group, info);
             }
 
-            NetBitArray receivedChunks = info.ReceivedChunks;
-            receivedChunks[chunkNumber] = true;
+            if (info.ReceivedChunks[chunkNumber])
+            {
+                LogDebug(NetLogMessage.FromValues(NetLogCode.DuplicateFragment,
+                    value: chunkNumber, maxValue: totalChunkCount));
 
+                return false;
+            }
+
+            info.ReceivedChunks[chunkNumber] = true;
             info.LastReceived = message.Time;
+            info.Count++;
 
             // copy to data
             int offset = chunkNumber * chunkByteSize;
             message.Span[headerOffset..].CopyTo(info.Data.AsSpan(offset));
 
-            int chunkCount = receivedChunks.PopCount;
-
             //LogVerbose("Found fragment #" + chunkNumber + " in group " + group + " offset " + 
             //    offset + " of total bits " + totalBits + " (total chunks done " + cnt + ")");
 
-            LogVerbose(
-                "Received fragment " + chunkNumber + " of " + totalChunkCount + " (" + chunkCount + " chunks received)");
-
-            if (chunkCount != totalChunkCount)
+            LogVerbose(NetLogMessage.FromValues(NetLogCode.ReceivedFragment, 
+                value: chunkNumber, maxValue: totalChunkCount));
+            
+            if (info.Count != totalChunkCount)
             {
                 return false;
             }
+
+            connection._receivedFragmentGroups.Remove(group);
 
             // Done! Transform this incoming message
             NetIncomingMessage incomingMessage = message.ToIncomingMessage(this);
@@ -169,11 +178,8 @@ namespace Lidgren.Network
             incomingMessage.BitLength = totalBits;
             incomingMessage.IsFragment = false;
 
-            LogVerbose(
-                "Fragment group #" + group + " fully received in " +
-                totalChunkCount + " chunks (" + totalBits + " bits)");
-
-            connection._receivedFragmentGroups.Remove(group);
+            LogVerbose(NetLogMessage.FromValues(NetLogCode.FragmentGroupFinished,
+                value: group, maxValue: totalChunkCount));
 
             ReleaseMessage(incomingMessage);
             return true;

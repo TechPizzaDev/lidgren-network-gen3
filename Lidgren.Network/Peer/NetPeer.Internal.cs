@@ -2,13 +2,13 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Threading;
-using System.Threading.Tasks;
 
 namespace Lidgren.Network
 {
@@ -21,6 +21,8 @@ namespace Lidgren.Network
         private uint _frameCounter;
         private TimeSpan _lastHeartbeat;
         private TimeSpan _lastSocketBind = TimeSpan.MinValue;
+        private TimeSpan _socketRebindDelay = TimeSpan.FromSeconds(1.0);
+        private int _closeSendTimeoutSeconds = 5;
         private AutoResetEvent? _messageReceivedEvent;
         private List<(SynchronizationContext SyncContext, SendOrPostCallback Callback)>? _receiveCallbacks;
         internal NetIncomingMessage? _readHelperMessage;
@@ -99,7 +101,7 @@ namespace Lidgren.Network
                 }
                 catch (Exception ex)
                 {
-                    LogWarning("Receive callback exception:" + ex);
+                    LogWarning(new NetLogMessage(NetLogCode.PacketCallbackException, message, ex));
                 }
             }
         }
@@ -113,9 +115,9 @@ namespace Lidgren.Network
         private Socket BindSocket(bool reuseAddress)
         {
             TimeSpan now = NetTime.Now;
-            if (Socket != null && now - _lastSocketBind < TimeSpan.FromSeconds(1.0))
+            if (Socket != null && now - _lastSocketBind < _socketRebindDelay)
             {
-                LogDebug("Suppressed socket rebind; last bound " + (now - _lastSocketBind) + " ago");
+                LogWarning(NetLogMessage.FromTime(NetLogCode.SocketRebindDelayed, time: (now - _lastSocketBind)));
                 return Socket; // only allow rebind once every second
             }
             _lastSocketBind = now;
@@ -144,9 +146,7 @@ namespace Lidgren.Network
                 {
                     if (Configuration.LocalAddress.AddressFamily != AddressFamily.InterNetworkV6)
                     {
-                        LogWarning(
-                            "Configuration specifies dual stack but " +
-                            "does not use IPv6 local address; dual stack will not work.");
+                        LogWarning(new NetLogMessage(NetLogCode.MissingIPv6ForDualStack));
                     }
                     else
                     {
@@ -179,7 +179,8 @@ namespace Lidgren.Network
             IPEndPoint boundEp = (Socket.LocalEndPoint as IPEndPoint) ??
                 throw new Exception("The socket has no bound endpoint.");
 
-            LogDebug("Socket bound to " + boundEp + ": " + Socket.IsBound);
+            LogDebug(new NetLogMessage(NetLogCode.SocketBound, endPoint: boundEp));
+
             Port = boundEp.Port;
             return Socket;
         }
@@ -193,8 +194,7 @@ namespace Lidgren.Network
                 if (Status == NetPeerStatus.Running)
                     return;
 
-                if (Configuration._enableUPnP)
-                    UPnP = new NetUPnP(this);
+                UPnP.Invalidate(NetTime.Now);
 
                 ReleasedIncomingMessages.Clear();
                 UnsentUnconnectedMessages.Clear();
@@ -240,8 +240,6 @@ namespace Lidgren.Network
         {
             AssertIsOnLibraryThread();
 
-            LogDebug("Network thread started");
-
             // Network loop
             do
             {
@@ -251,7 +249,7 @@ namespace Lidgren.Network
                 }
                 catch (Exception ex)
                 {
-                    LogWarning(ex.ToString());
+                    LogWarning(new NetLogMessage(NetLogCode.HeartbeatException, ex));
                 }
             }
             while (Status == NetPeerStatus.Running);
@@ -264,19 +262,27 @@ namespace Lidgren.Network
         {
             AssertIsOnLibraryThread();
 
-            LogDebug("Shutting down...");
-
             // disconnect and make one final heartbeat
-            var connections = Connections;
+            List<NetConnection> connections = Connections;
             lock (connections)
             {
                 // reverse-for so elements can be removed without breaking loop
                 for (int i = connections.Count; i-- > 0;)
-                    connections[i]?.Shutdown(_shutdownReason);
+                {
+                    if (_shutdownReason != null)
+                        Interlocked.Increment(ref _shutdownReason._recyclingCount);
+
+                    connections[i].Shutdown(_shutdownReason);
+                }
             }
 
-            foreach (var conn in Handshakes.Values)
-                conn?.Shutdown(_shutdownReason);
+            foreach (NetConnection conn in Handshakes.Values)
+            {
+                if (_shutdownReason != null)
+                    Interlocked.Increment(ref _shutdownReason._recyclingCount);
+
+                conn.Shutdown(_shutdownReason);
+            }
 
             FlushDelayedPackets();
 
@@ -295,16 +301,16 @@ namespace Lidgren.Network
                         }
                         catch (Exception ex)
                         {
-                            LogDebug("Socket.Shutdown exception: " + ex.ToString());
+                            LogWarning(new NetLogMessage(NetLogCode.SocketShutdownException, ex));
                         }
 
                         try
                         {
-                            Socket.Close(2); // 2 seconds timeout
+                            Socket.Close(_closeSendTimeoutSeconds);
                         }
                         catch (Exception ex)
                         {
-                            LogDebug("Socket.Close exception: " + ex.ToString());
+                            LogWarning(new NetLogMessage(NetLogCode.SocketCloseException, ex));
                         }
                     }
                 }
@@ -312,7 +318,6 @@ namespace Lidgren.Network
                 {
                     Socket = null;
                     Status = NetPeerStatus.NotRunning;
-                    LogDebug("Shutdown complete");
 
                     // wake up any threads waiting for server shutdown
                     _messageReceivedEvent?.Set();
@@ -357,7 +362,7 @@ namespace Lidgren.Network
                         if (conn.Status == NetConnectionStatus.Disconnected &&
                             Handshakes.TryRemove(conn.RemoteEndPoint, out _))
                         {
-                            LogWarning("Sanity fail! Handshakes list contained disconnected connection!");
+                            LogWarning(NetLogMessage.FromValues(NetLogCode.DisconnectedHandshake, endPoint: conn));
                         }
 #endif
                     }
@@ -430,7 +435,7 @@ namespace Lidgren.Network
                             // we should shut down the connection; but _senderRemote seemingly cannot be trusted,
                             // so which connection should we shut down?!
                             // So, what to do?
-                            LogWarning("ConnectionReset");
+                            LogWarning(new NetLogMessage(NetLogCode.ConnectionReset, sx));
                             return;
 
                         case SocketError.NotConnected:
@@ -439,7 +444,7 @@ namespace Lidgren.Network
                             return;
 
                         default:
-                            LogWarning("Socket exception: " + sx.ToString());
+                            LogWarning(new NetLogMessage(NetLogCode.ReceiveFailure, sx));
                             return;
                     }
                 }
@@ -449,10 +454,10 @@ namespace Lidgren.Network
 
                 //LogVerbose("Received " + bytesReceived + " bytes");
 
-                if (UPnP != null && UPnP.Status == UPnPStatus.Discovering)
+                if (UPnP.Status == UPnPStatus.Discovering)
                 {
                     if (SetupUpnp(UPnP, now, buffer.AsSpan(0, bytesReceived)))
-                        return;
+                        continue;
                 }
 
                 var senderEndPoint = (IPEndPoint)_senderRemote;
@@ -489,9 +494,9 @@ namespace Lidgren.Network
 
                     if (bytesReceived - offset < payloadByteLength)
                     {
-                        LogWarning(
-                            "Malformed packet; stated payload length " + payloadByteLength +
-                            ", remaining bytes " + (bytesReceived - offset));
+                        LogWarning(NetLogMessage.FromValues(NetLogCode.InvalidPacketSize,
+                            value: bytesReceived - offset,
+                            maxValue: payloadByteLength));
                         return;
                     }
 
@@ -549,7 +554,7 @@ namespace Lidgren.Network
                     }
                     catch (Exception ex)
                     {
-                        LogError("Packet parsing error: \"" + ex.Message + "\" from " + senderEndPoint);
+                        LogError(new NetLogMessage(NetLogCode.PacketCallbackException, ex, sender, senderEndPoint));
                     }
                     offset += payloadByteLength;
                 }
@@ -573,19 +578,26 @@ namespace Lidgren.Network
                 try
                 {
                     int locationIndex = response.IndexOf("location:", StringComparison.OrdinalIgnoreCase) + 9;
+                    if (locationIndex == -1)
+                    {
+                        LogWarning(new NetLogMessage(NetLogCode.UPnPInvalidResponse, data: response));
+                        return true;
+                    }
+
                     ReadOnlySpan<char> locationLine = response.AsSpan()[locationIndex..];
+                    int locationEnd = locationLine.IndexOf("\r", StringComparison.Ordinal);
+                    if (locationEnd == -1)
+                    {
+                        LogWarning(new NetLogMessage(NetLogCode.UPnPInvalidResponse, data: response));
+                        return true;
+                    }
 
-                    ReadOnlySpan<char> location = locationLine
-                        .Slice(0, locationLine.IndexOf("\r", StringComparison.Ordinal))
-                        .Trim();
-
+                    ReadOnlySpan<char> location = locationLine.Slice(0, locationEnd).Trim();
                     upnp.ExtractServiceUri(new Uri(location.ToString()));
                 }
                 catch (Exception ex)
                 {
-                    LogDebug("Failed to parse UPnP response: " + ex.ToString());
-
-                    // don't try to parse this packet further
+                    LogWarning(new NetLogMessage(NetLogCode.UPnPInvalidResponse, ex, data: response));
                 }
                 return true;
             }
@@ -662,22 +674,21 @@ namespace Lidgren.Network
                     return;
 
                 case NetMessageType.ConnectResponse:
-                    foreach (var hs in Handshakes)
+                    foreach ((IPEndPoint hsEndpoint, NetConnection hsconn) in Handshakes)
                     {
-                        if (!hs.Key.Address.Equals(senderEndPoint.Address) ||
-                            !hs.Value._connectionInitiator)
+                        if (!hsEndpoint.Address.Equals(senderEndPoint.Address) ||
+                            !hsconn._connectionInitiator)
                             continue;
 
                         // We are currently trying to connection to XX.XX.XX.XX:Y
                         // ... but we just received a ConnectResponse from XX.XX.XX.XX:Z
                         // Lets just assume the router decided to use this port instead
 
-                        NetConnection hsconn = hs.Value;
-                        ConnectionLookup.TryRemove(hs.Key, out _);
-                        Handshakes.TryRemove(hs.Key, out _);
+                        ConnectionLookup.TryRemove(hsEndpoint, out _);
+                        Handshakes.TryRemove(hsEndpoint, out _);
 
-                        LogDebug("Detected host port change; rerouting connection to " + senderEndPoint);
                         hsconn.MutateEndPoint(senderEndPoint);
+                        LogDebug(new NetLogMessage(NetLogCode.HostPortChanged, null, hsconn, hsEndpoint));
 
                         ConnectionLookup.TryAdd(senderEndPoint, hsconn);
                         Handshakes.TryAdd(senderEndPoint, hsconn);
@@ -685,44 +696,38 @@ namespace Lidgren.Network
                         hsconn.ReceivedHandshake(now, type, offset, payloadByteLength);
                         return;
                     }
-
-                    LogWarning("Received unhandled library message " + type + " from " + senderEndPoint);
-                    return;
+                    goto default;
 
                 case NetMessageType.Connect:
                     if (!Configuration.AcceptIncomingConnections)
                     {
-                        LogWarning("Received Connect, but we're not accepting incoming connections.");
+                        LogWarning(NetLogMessage.FromValues(NetLogCode.MessageTypeDisabled,
+                            endPoint: senderEndPoint, value: (int)type));
                         return;
                     }
                     // handle connect
                     // It's someone wanting to shake hands with us!
 
-                    int reservedSlots = Handshakes.Count + Connections.Count;
-                    if (reservedSlots >= Configuration._maximumConnections)
-                    {
-                        // TODO: add event handler for this
-                        // server full
-                        NetOutgoingMessage full = CreateMessage("Server full");
-                        full._messageType = NetMessageType.Disconnect;
-                        SendLibraryMessage(full, senderEndPoint);
-                        return;
-                    }
-
-                    // Ok, start handshake!
-                    NetConnection conn = new NetConnection(this, senderEndPoint);
+                    NetConnection conn = new(this, senderEndPoint);
                     conn.Status = NetConnectionStatus.ReceivedInitiation;
+
                     Handshakes.TryAdd(senderEndPoint, conn);
                     conn.ReceivedHandshake(now, type, offset, payloadByteLength);
                     return;
 
+                case NetMessageType.InvalidHandshake:
+                case NetMessageType.WrongAppIdentifier:
+                case NetMessageType.ConnectTimedOut:
+                case NetMessageType.TimedOut:
                 case NetMessageType.Disconnect:
                     // this is probably ok
-                    LogVerbose("Received Disconnect from unconnected source: " + senderEndPoint);
+                    LogWarning(NetLogMessage.FromValues(NetLogCode.UnconnectedLibraryMessage,
+                        endPoint: senderEndPoint, value: (int)type));
                     return;
 
                 default:
-                    LogWarning("Received unhandled library message " + type + " from " + senderEndPoint);
+                    LogWarning(NetLogMessage.FromValues(NetLogCode.UnhandledLibraryMessage,
+                        endPoint: senderEndPoint, value: (int)type));
                     return;
             }
         }
@@ -733,14 +738,16 @@ namespace Lidgren.Network
             connection.InitExpandMTU(NetTime.Now);
 
             if (!Handshakes.TryRemove(connection.RemoteEndPoint, out _))
-                LogWarning("AcceptConnection called but Handshakes did not contain it!");
+            {
+                LogWarning(new NetLogMessage(NetLogCode.MissingHandshake));
+            }
 
             lock (Connections)
             {
 #if DEBUG
                 if (Connections.Contains(connection))
                 {
-                    LogWarning("AcceptConnection called but Connections already contains it!");
+                    LogWarning(new NetLogMessage(NetLogCode.DuplicateConnection));
                 }
                 else
 #endif
@@ -773,6 +780,21 @@ namespace Lidgren.Network
             _readHelperMessage.BitLength = (offset + payloadLength) * 8;
             _readHelperMessage.BitPosition = offset * 8;
             return _readHelperMessage;
+        }
+
+        internal NetOutgoingMessage CreateReadHelperOutMessage(int offset, int payloadLength)
+        {
+            AssertIsOnLibraryThread();
+
+            if (_readHelperMessage == null)
+                throw new InvalidOperationException("The peer is not initialized.");
+
+            var message = CreateMessage();
+            _readHelperMessage.BitLength = (offset + payloadLength) * 8;
+            _readHelperMessage.BitPosition = offset * 8;
+            message.Write(_readHelperMessage);
+            message.BitPosition = 0;
+            return message;
         }
     }
 }

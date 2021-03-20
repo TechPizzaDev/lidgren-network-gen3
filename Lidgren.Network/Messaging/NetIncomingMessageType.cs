@@ -52,33 +52,8 @@ namespace Lidgren.Network
 		DiscoveryResponse = 1 << 6,		// Data
 
 		/// <summary>
-		/// Verbose debug message.
-		/// </summary>
-		VerboseDebugMessage = 1 << 7,	// Data (string)
-
-		/// <summary>
-		/// Debug message.
-		/// </summary>
-		DebugMessage = 1 << 8,			// Data (string)
-
-		/// <summary>
-		/// Warning message.
-		/// </summary>
-		WarningMessage = 1 << 9,		// Data (string)
-
-		/// <summary>
-		/// Error message.
-		/// </summary>
-		ErrorMessage = 1 << 10,			// Data (string)
-
-		/// <summary>
 		/// NAT introduction was successful.
 		/// </summary>
-		NatIntroductionSuccess = 1 << 11, // Data (as passed to master server)
-
-		/// <summary>
-		/// A roundtrip was measured and <see cref="NetConnection.AverageRoundtripTime"/> was updated.
-		/// </summary>
-		ConnectionLatencyUpdated = 1 << 12, // Seconds as a TimeSpan
+		NatIntroductionSuccess = 1 << 7, // Data (as passed to master server)
 	}
 }

@@ -2,7 +2,7 @@
 
 namespace Lidgren.Network
 {
-    public partial class NetConnection  
+    public partial class NetConnection
     {
         private enum ExpandMTUStatus
         {
@@ -31,7 +31,7 @@ namespace Lidgren.Network
         internal void InitExpandMTU(TimeSpan now)
         {
             // wait a bit before starting to expand mtu
-            _lastSentMTUAttemptTime = 
+            _lastSentMTUAttemptTime =
                 now + _peerConfiguration._expandMTUFrequency + AverageRoundtripTime + TimeSpan.FromSeconds(1.5);
 
             _largestSuccessfulMTU = 512;
@@ -141,9 +141,16 @@ namespace Lidgren.Network
                 return;
 
             _expandMTUStatus = ExpandMTUStatus.Finished;
+
+            int previousMTU = CurrentMTU;
             CurrentMTU = size;
             if (CurrentMTU != _peerConfiguration._maximumTransmissionUnit)
-                Peer.LogDebug("Expanded Maximum Transmission Unit to: " + CurrentMTU + " bytes");
+            {
+                Peer.LogDebug(NetLogMessage.FromValues(NetLogCode.ExpandedMTU,
+                    endPoint: this,
+                    value: previousMTU,
+                    maxValue: CurrentMTU));
+            }
         }
 
         private void SendMTUSuccess(int size)

@@ -25,7 +25,6 @@ namespace UnitTests
                     Port = port,
                     AutoExpandMTU = true
                 };
-                config.DisableMessageType(NetIncomingMessageType.DebugMessage);
                 var server = new NetServer(config);
                 server.Start();
 
@@ -78,20 +77,8 @@ namespace UnitTests
                             Console.WriteLine("Server Status: " + message.ReadEnum<NetConnectionStatus>());
                             break;
 
-                        case NetIncomingMessageType.DebugMessage:
-                            Console.WriteLine("Server Debug: " + message.ReadString());
-                            break;
-
-                        case NetIncomingMessageType.WarningMessage:
-                            Console.WriteLine("Server Warning: " + message.ReadString());
-                            break;
-
                         case NetIncomingMessageType.Data:
                             Console.WriteLine("Server Data: " + message.ReadString());
-                            break;
-
-                        case NetIncomingMessageType.ErrorMessage:
-                            Console.WriteLine("Server Error: " + message.ReadString());
                             break;
 
                         /*
@@ -166,7 +153,6 @@ namespace UnitTests
                         AcceptIncomingConnections = false,
                         AutoExpandMTU = true
                     };
-                    config.DisableMessageType(NetIncomingMessageType.DebugMessage);
                     var client = new NetClient(config);
                     client.Start();
 
@@ -228,20 +214,8 @@ namespace UnitTests
                                 Console.WriteLine("Client Status: " + message.ReadEnum<NetConnectionStatus>());
                                 break;
 
-                            case NetIncomingMessageType.DebugMessage:
-                                Console.WriteLine("Client Debug: " + message.ReadString());
-                                break;
-
-                            case NetIncomingMessageType.WarningMessage:
-                                Console.WriteLine("Client Warning: " + message.ReadString());
-                                break;
-
                             case NetIncomingMessageType.Data:
                                 Console.WriteLine("Client Data: " + message.ReadString());
-                                break;
-
-                            case NetIncomingMessageType.ErrorMessage:
-                                Console.WriteLine("Client Error: " + message.ReadString());
                                 break;
 
                             /*

@@ -19,7 +19,7 @@ namespace Lidgren.Network
         private static int _initializedPeersCount;
 
         private bool _isDisposed;
-        private string? _shutdownReason;
+        private NetOutgoingMessage? _shutdownReason;
 
         private object MessageReceivedEventInitMutex { get; } = new object();
 
@@ -50,9 +50,9 @@ namespace Lidgren.Network
         public int Port { get; private set; }
 
         /// <summary>
-        /// Gets a <see cref="NetUPnP"/> helper if enabled in the <see cref="NetPeerConfiguration"/>.
+        /// Gets a <see cref="NetUPnP"/> helper.
         /// </summary>
-        public NetUPnP? UPnP { get; private set; }
+        public NetUPnP UPnP { get; }
 
         /// <summary>
         /// Gets or sets the application defined object containing data about the peer.
@@ -114,6 +114,8 @@ namespace Lidgren.Network
                 _senderRemote = new IPEndPoint(IPAddress.Any, 0);
 
             Statistics = new NetPeerStatistics(this);
+            UPnP = new NetUPnP(this);
+
             Status = NetPeerStatus.NotRunning;
         }
 
@@ -129,8 +131,10 @@ namespace Lidgren.Network
 
             lock (Connections)
             {
-                foreach (var conn in Connections)
+                foreach (NetConnection conn in Connections)
+                {
                     destination.Add(conn);
+                }
                 return Connections.Count;
             }
         }
@@ -143,7 +147,7 @@ namespace Lidgren.Network
             if (Status != NetPeerStatus.NotRunning)
             {
                 // already running! Just ignore...
-                LogWarning("Start() called on already running NetPeer - ignoring.");
+                LogWarning(new NetLogMessage(NetLogCode.AlreadyConnected));
                 return;
             }
 
@@ -163,9 +167,6 @@ namespace Lidgren.Network
             _networkThread.Name = Configuration.NetworkThreadName;
             _networkThread.IsBackground = true;
             _networkThread.Start();
-
-            // send upnp discovery
-            UPnP?.Discover();
         }
 
         /// <summary>
@@ -308,22 +309,27 @@ namespace Lidgren.Network
 #if DEBUG
             throw new LidgrenException(message);
 #else
-            LogError(message);
+            throw new NotImplementedException();
+            //LogError(message);
 #endif
         }
 
         /// <summary>
         /// Disconnects all active connections and closes the socket.
         /// </summary>
-        public void Shutdown(string? reason)
+        public void Shutdown(NetOutgoingMessage? reason = null)
         {
             // called on user thread
             if (Socket == null)
                 return; // already shut down
 
-            LogDebug("Shutdown requested");
-
             _shutdownReason = reason;
+            if (_shutdownReason != null)
+            {
+                _shutdownReason._messageType = NetMessageType.Disconnect;
+                Interlocked.Increment(ref _shutdownReason._recyclingCount);
+            }
+
             Status = NetPeerStatus.ShutdownRequested;
         }
 

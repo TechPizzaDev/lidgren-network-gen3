@@ -52,16 +52,16 @@ namespace Lidgren.Network
 
             if (relate < 0)
             {
-                // duplicate
-                Peer.LogVerbose("Received message #" + message.SequenceNumber + " DROPPING DUPLICATE");
+                Peer.LogVerbose(NetLogMessage.FromValues(NetLogCode.DuplicateMessage,
+                    message, value: _windowStart, maxValue: _windowSize));
                 return;
             }
 
             // relate > 0 = early message
             if (relate > _windowSize)
             {
-                // too early message!
-                Peer.LogDebug("Received " + message.ToString() + " TOO EARLY! Expected " + _windowStart);
+                Peer.LogVerbose(NetLogMessage.FromValues(NetLogCode.TooEarlyMessage,
+                    message, value: _windowStart, maxValue: _windowSize));
                 return;
             }
 

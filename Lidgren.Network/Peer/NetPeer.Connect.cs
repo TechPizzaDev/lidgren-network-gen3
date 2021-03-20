@@ -39,8 +39,7 @@ namespace Lidgren.Network
 
                     default:
                         // weird
-                        LogWarning(
-                            "Weird situation; Connect() already in progress to remote endpoint; but hs status is " + hs.Status);
+                        LogWarning(NetLogMessage.FromValues(NetLogCode.UnexpectedHandshakeStatus, value: (int)hs.Status));
                         break;
                 }
                 return hs;

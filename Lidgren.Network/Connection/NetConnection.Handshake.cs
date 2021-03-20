@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Threading;
 
 namespace Lidgren.Network
 {
@@ -7,7 +8,7 @@ namespace Lidgren.Network
         internal bool _connectRequested;
         internal bool _disconnectRequested;
         internal bool _disconnectReqSendBye;
-        internal string? _disconnectMessage;
+        internal NetOutgoingMessage? _disconnectMessage;
         internal bool _connectionInitiator;
         internal TimeSpan _lastHandshakeSendTime;
         internal int _handshakeAttempts;
@@ -24,7 +25,9 @@ namespace Lidgren.Network
             Peer.AssertIsOnLibraryThread();
 
             if (_disconnectRequested)
+            {
                 ExecuteDisconnect(_disconnectMessage, true);
+            }
 
             if (_connectRequested)
             {
@@ -33,7 +36,7 @@ namespace Lidgren.Network
                     case NetConnectionStatus.Connected:
                     case NetConnectionStatus.RespondedConnect:
                         // reconnect
-                        ExecuteDisconnect("Reconnecting", true);
+                        ExecuteDisconnect(NetMessageType.ConnectTimedOut);
                         break;
 
                     case NetConnectionStatus.InitiatedConnect:
@@ -62,7 +65,7 @@ namespace Lidgren.Network
                 if (_handshakeAttempts >= _peerConfiguration._maximumHandshakeAttempts)
                 {
                     // failed to connect
-                    ExecuteDisconnect("Failed to establish connection - no response from remote host", true);
+                    ExecuteDisconnect(NetMessageType.ConnectTimedOut);
                     return;
                 }
 
@@ -85,13 +88,13 @@ namespace Lidgren.Network
                     case NetConnectionStatus.None:
                     case NetConnectionStatus.ReceivedInitiation:
                     default:
-                        Peer.LogWarning("Time to resend handshake, but status is " + Status);
+                        Peer.LogWarning(NetLogMessage.FromValues(NetLogCode.UnexpectedHandshakeStatus, value: (int)Status));
                         break;
                 }
             }
         }
 
-        internal void ExecuteDisconnect(string? reason, bool sendByeMessage)
+        internal void ExecuteDisconnect(NetOutgoingMessage? reason, bool sendByeMessage)
         {
             Peer.AssertIsOnLibraryThread();
 
@@ -120,6 +123,17 @@ namespace Lidgren.Network
             _handshakeAttempts = 0;
         }
 
+        internal void ExecuteDisconnect(NetMessageType? reasonType)
+        {
+            NetOutgoingMessage? reason = null;
+            if (reasonType.HasValue)
+            {
+                reason = Peer.CreateMessage();
+                reason._messageType = reasonType.GetValueOrDefault();
+            }
+            ExecuteDisconnect(reason, reasonType.HasValue);
+        }
+
         internal void SendConnect(TimeSpan now)
         {
             Peer.AssertIsOnLibraryThread();
@@ -142,7 +156,9 @@ namespace Lidgren.Network
             _handshakeAttempts++;
 
             if (_handshakeAttempts > 1)
-                Peer.LogDebug("Resending Connect...");
+            {
+                Peer.LogDebug(new NetLogMessage(NetLogCode.ResendingConnect));
+            }
             SetStatus(NetConnectionStatus.InitiatedConnect);
         }
 
@@ -171,22 +187,27 @@ namespace Lidgren.Network
             _handshakeAttempts++;
 
             if (_handshakeAttempts > 1)
-                Peer.LogDebug("Resending ConnectResponse...");
-
+            {
+                Peer.LogDebug(new NetLogMessage(NetLogCode.ResendingRespondedConnect));
+            }
             SetStatus(NetConnectionStatus.RespondedConnect);
         }
 
-        internal void SendDisconnect(string? reason, bool onLibraryThread)
+        internal void SendDisconnect(NetOutgoingMessage? message, bool onLibraryThread)
         {
             if (onLibraryThread)
                 Peer.AssertIsOnLibraryThread();
 
-            NetOutgoingMessage om = Peer.CreateMessage(reason);
-            om._messageType = NetMessageType.Disconnect;
+            if (message == null)
+            {
+                message = Peer.CreateMessage();
+                message._messageType = NetMessageType.Disconnect;
+            }
+
             if (onLibraryThread)
-                Peer.SendLibraryMessage(om, RemoteEndPoint);
+                Peer.SendLibraryMessage(message, RemoteEndPoint);
             else
-                Peer.UnsentUnconnectedMessages.Enqueue((RemoteEndPoint, om));
+                Peer.UnsentUnconnectedMessages.Enqueue((RemoteEndPoint, message));
         }
 
         private void WriteLocalHail(NetOutgoingMessage om)
@@ -194,7 +215,7 @@ namespace Lidgren.Network
             if (LocalHailMessage == null)
                 return;
 
-            var hi = LocalHailMessage.GetBuffer();
+            byte[]? hi = LocalHailMessage.GetBuffer();
             if (hi.Length >= LocalHailMessage.ByteLength)
             {
                 if (om.ByteLength + LocalHailMessage.ByteLength > _peerConfiguration._maximumTransmissionUnit - 10)
@@ -223,30 +244,14 @@ namespace Lidgren.Network
         }
 
         /// <summary>
-        /// Approves this connection; sending a connection response to the remote host
-        /// </summary>
-        public void Approve()
-        {
-            if (Status != NetConnectionStatus.RespondedAwaitingApproval)
-            {
-                Peer.LogWarning("Approve() called in wrong status; expected RespondedAwaitingApproval; got " + Status);
-                return;
-            }
-
-            LocalHailMessage = null;
-            _handshakeAttempts = 0;
-            SendConnectResponse(NetTime.Now, false);
-        }
-
-        /// <summary>
         /// Approves this connection; sending a connection response to the remote host.
         /// </summary>
         /// <param name="localHail">The local hail message that will be set as RemoteHailMessage on the remote host</param>
-        public void Approve(NetOutgoingMessage localHail)
+        public void Approve(NetOutgoingMessage? localHail)
         {
             if (Status != NetConnectionStatus.RespondedAwaitingApproval)
             {
-                Peer.LogWarning("Approve() called in wrong status; expected RespondedAwaitingApproval; got " + Status);
+                Peer.LogWarning(NetLogMessage.FromValues(NetLogCode.UnexpectedApprove, endPoint: this, value: (int)Status));
                 return;
             }
 
@@ -256,21 +261,16 @@ namespace Lidgren.Network
         }
 
         /// <summary>
-        /// Denies this connection; disconnecting it.
-        /// </summary>
-        public void Deny()
-        {
-            Deny(string.Empty);
-        }
-
-        /// <summary>
-        /// Denies this connection; disconnecting it and sending a reason as 
-        /// a <see cref="string"/> in a <see cref="NetIncomingMessageType.StatusChanged"/> message.
+        /// Denies this connection; disconnecting it and sending a reason 
+        /// in a <see cref="NetIncomingMessageType.StatusChanged"/> message.
         /// </summary>
         /// <param name="reason">The stated reason for the disconnect.</param>
-        public void Deny(string reason)
+        public void Deny(NetOutgoingMessage? reason = null)
         {
             // send disconnect; remove from handshakes
+            if (reason != null)
+                reason._messageType = NetMessageType.Disconnect;
+
             SendDisconnect(reason, false);
 
             // remove from handshakes
@@ -324,7 +324,7 @@ namespace Lidgren.Network
                     }
                     if (Status == NetConnectionStatus.RespondedAwaitingApproval)
                     {
-                        Peer.LogWarning("Ignoring multiple Connect() most likely due to a delayed Approval");
+                        Peer.LogWarning(new NetLogMessage(NetLogCode.IgnoringMultipleConnects, endPoint: this));
                         return;
                     }
                     if (Status == NetConnectionStatus.RespondedConnect)
@@ -333,8 +333,7 @@ namespace Lidgren.Network
                         SendConnectResponse(now, true);
                         return;
                     }
-                    Peer.LogDebug(
-                        "Unhandled Connect: " + type + ", status is " + Status + " length: " + payloadLength);
+                    Peer.LogDebug(NetLogMessage.FromValues(NetLogCode.UnhandledConnect, endPoint: this, value: (int)Status));
                     break;
 
                 case NetMessageType.ConnectResponse:
@@ -374,12 +373,15 @@ namespace Lidgren.Network
                     }
                     break;
 
+                case NetMessageType.InvalidHandshake:
+                case NetMessageType.WrongAppIdentifier:
+                case NetMessageType.ConnectTimedOut:
+                case NetMessageType.TimedOut:
                 case NetMessageType.Disconnect:
-                    string reason = "Ouch";
+                    NetOutgoingMessage? reason = null;
                     try
                     {
-                        NetIncomingMessage inc = Peer.SetupReadHelperMessage(offset, payloadLength);
-                        reason = inc.ReadString();
+                        reason = Peer.CreateReadHelperOutMessage(offset, payloadLength);
                     }
                     catch
                     {
@@ -400,7 +402,7 @@ namespace Lidgren.Network
                     return;
 
                 default:
-                    Peer.LogDebug("Unhandled type during handshake: " + type + " length: " + payloadLength);
+                    Peer.LogDebug(NetLogMessage.FromValues(NetLogCode.UnhandledHandshakeMessage, value: (int)Status));
                     break;
             }
         }
@@ -469,7 +471,7 @@ namespace Lidgren.Network
 
                 if (remoteAppIdentifier != Peer.Configuration.AppIdentifier)
                 {
-                    ExecuteDisconnect("Wrong application identifier!", true);
+                    ExecuteDisconnect(NetMessageType.WrongAppIdentifier);
                     return (false, hail, hailLength);
                 }
 
@@ -479,8 +481,8 @@ namespace Lidgren.Network
             catch (Exception ex)
             {
                 // whatever; we failed
-                ExecuteDisconnect("Handshake data validation failed", true);
-                Peer.LogWarning("ReadRemoteHandshakeData failed: " + ex.Message);
+                ExecuteDisconnect(NetMessageType.InvalidHandshake);
+                Peer.LogWarning(new NetLogMessage(NetLogCode.InvalidHandshake, ex));
 
                 return (false, null, 0);
             }
@@ -489,18 +491,28 @@ namespace Lidgren.Network
         /// <summary>
         /// Disconnect from the remote peer.
         /// </summary>
-        /// <param name="reason">The string to send with the disconnect message.</param>
-        public void Disconnect(string? reason)
+        /// <param name="reason">The message to send with the disconnect.</param>
+        public void Disconnect(NetOutgoingMessage? reason = null)
         {
             // user or library thread
-            if (Status == NetConnectionStatus.None || Status == NetConnectionStatus.Disconnected)
+            if (Status == NetConnectionStatus.None ||
+                Status == NetConnectionStatus.Disconnected)
+            {
                 return;
+            }
 
-            Peer.LogVerbose("Disconnect requested for " + this);
             _disconnectMessage = reason;
+            if (_disconnectMessage != null)
+            {
+                _disconnectMessage._messageType = NetMessageType.Disconnect;
+                Interlocked.Increment(ref _disconnectMessage._recyclingCount);
+            }
 
-            if (Status != NetConnectionStatus.Disconnected && Status != NetConnectionStatus.None)
+            if (Status != NetConnectionStatus.Disconnected &&
+                Status != NetConnectionStatus.None)
+            {
                 SetStatus(NetConnectionStatus.Disconnecting, reason);
+            }
 
             _handshakeAttempts = 0;
             _disconnectRequested = true;

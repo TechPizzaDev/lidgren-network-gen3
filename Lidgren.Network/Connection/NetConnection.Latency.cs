@@ -5,10 +5,12 @@ namespace Lidgren.Network
 {
     public partial class NetConnection
     {
+        public delegate void ConnectionLatencyUpdated(NetConnection connection, TimeSpan averageRoundtripTime);
+
         private TimeSpan _sentPingTime;
         private TimeSpan _timeoutDeadline = TimeSpan.MaxValue;
         private byte _sentPingNumber;
-        private NetOutgoingMessage _pingPongBuffer = new NetOutgoingMessage(ArrayPool<byte>.Shared);
+        private NetOutgoingMessage _pingPongBuffer = new(ArrayPool<byte>.Shared);
 
         /// <summary>
         /// Gets the current average roundtrip time.
@@ -20,6 +22,8 @@ namespace Lidgren.Network
         /// </summary>
         // local time value + m_remoteTimeOffset = remote time value
         public TimeSpan RemoteTimeOffset { get; internal set; }
+
+        public event ConnectionLatencyUpdated? LatencyUpdated;
 
         // this might happen more than once
         internal void InitializeRemoteTimeOffset(TimeSpan remoteSendTime)
@@ -96,7 +100,7 @@ namespace Lidgren.Network
         {
             if (pongNumber != _sentPingNumber)
             {
-                Peer.LogVerbose("Ping/Pong mismatch; dropped message?");
+                Peer.LogVerbose(new NetLogMessage(NetLogCode.PingPongMismatch, endPoint: this));
                 return;
             }
 
@@ -111,18 +115,13 @@ namespace Lidgren.Network
             {
                 RemoteTimeOffset = diff;
                 AverageRoundtripTime = rtt;
-                Peer.LogDebug(
-                    "Initiated average roundtrip time to " + 
-                    NetTime.ToReadable(AverageRoundtripTime) + " Remote time is: " + (now + diff));
+                Peer.LogDebug(NetLogMessage.FromTime(NetLogCode.InitiatedAverageRoundtripTime, endPoint: this));
             }
             else
             {
                 AverageRoundtripTime = (AverageRoundtripTime * 0.7) + rtt * 0.3;
-
                 RemoteTimeOffset = ((RemoteTimeOffset * (_sentPingNumber - 1)) + diff) / _sentPingNumber;
-                Peer.LogVerbose(
-                    "Updated average roundtrip time to " + NetTime.ToReadable(AverageRoundtripTime) + 
-                    ", remote time to " + (now + RemoteTimeOffset) + " (ie. diff " + RemoteTimeOffset + ")");
+                Peer.LogVerbose(NetLogMessage.FromTime(NetLogCode.UpdatedAverageRoundtripTime, endPoint: this));
             }
 
             // update resend delay for all channels
@@ -136,14 +135,7 @@ namespace Lidgren.Network
             // m_peer.LogVerbose("Timeout deadline pushed to  " + m_timeoutDeadline);
 
             // notify the application that average rtt changed
-            if (Peer.Configuration.IsMessageTypeEnabled(NetIncomingMessageType.ConnectionLatencyUpdated))
-            {
-                var updateMsg = Peer.CreateIncomingMessage(NetIncomingMessageType.ConnectionLatencyUpdated);
-                updateMsg.SenderConnection = this;
-                updateMsg.SenderEndPoint = RemoteEndPoint;
-                updateMsg.Write(rtt);
-                Peer.ReleaseMessage(updateMsg);
-            }
+            LatencyUpdated?.Invoke(this, AverageRoundtripTime);
         }
     }
 }

@@ -37,6 +37,7 @@ namespace Lidgren.Network
         {
             var message = CreateMessage();
             message.Write(content);
+            message.BitPosition = 0;
             return message;
         }
 

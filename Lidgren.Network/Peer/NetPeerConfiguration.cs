@@ -38,11 +38,9 @@ namespace Lidgren.Network
         private ArrayPool<byte> _storagePool;
 
         internal bool _acceptIncomingConnections;
-        internal int _maximumConnections;
         internal TimeSpan _pingInterval;
         internal bool _useMessageRecycling;
         internal TimeSpan _connectionTimeout;
-        internal bool _enableUPnP;
         internal bool _autoFlushSendQueue;
         internal NetIncomingMessageType _disabledTypes;
         internal int _port;
@@ -77,8 +75,6 @@ namespace Lidgren.Network
             _disabledTypes =
                 NetIncomingMessageType.ConnectionApproval |
                 NetIncomingMessageType.UnconnectedData |
-                NetIncomingMessageType.VerboseDebugMessage |
-                NetIncomingMessageType.ConnectionLatencyUpdated |
                 NetIncomingMessageType.NatIntroductionSuccess;
 
             _networkThreadName = "Lidgren Network Thread";
@@ -90,7 +86,6 @@ namespace Lidgren.Network
             _receiveBufferSize = 131071;
             _sendBufferSize = 131071;
             _acceptIncomingConnections = false;
-            _maximumConnections = 32;
             _pingInterval = TimeSpan.FromSeconds(4);
             _connectionTimeout = TimeSpan.FromSeconds(25);
             _fragmentGroupTimeout = TimeSpan.FromSeconds(8);
@@ -189,23 +184,6 @@ namespace Lidgren.Network
         }
 
         /// <summary>
-        /// Gets or sets the maximum amount of connections this peer can hold.
-        /// <para>
-        /// Cannot be changed once <see cref="NetPeer"/> is initialized.
-        /// </para>
-        /// </summary>
-        public int MaximumConnections
-        {
-            get => _maximumConnections;
-            set
-            {
-                if (_isLocked)
-                    throw new LidgrenException(IsLockedMessage);
-                _maximumConnections = value;
-            }
-        }
-
-        /// <summary>
         /// Gets or sets the maximum amount of bytes to send in a single packet, excluding IP, UDP and Lidgren headers.
         /// <para>
         /// Cannot be changed once <see cref="NetPeer"/> is initialized.
@@ -271,20 +249,6 @@ namespace Lidgren.Network
         {
             get => _fragmentGroupTimeout;
             set => _fragmentGroupTimeout = value;
-        }
-
-        /// <summary>
-        /// Enables UPnP support; enabling port forwarding and getting external IP.
-        /// </summary>
-        public bool EnableUPnP
-        {
-            get => _enableUPnP;
-            set
-            {
-                if (_isLocked)
-                    throw new LidgrenException(IsLockedMessage);
-                _enableUPnP = value;
-            }
         }
 
         /// <summary>

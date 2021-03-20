@@ -4,30 +4,32 @@ namespace Lidgren.Network
 {
     public partial class NetPeer
     {
+        public delegate void LogEvent(NetPeer sender, NetLogLevel level, in NetLogMessage message);
+
+        public event LogEvent VerboseMessage;
+        public event LogEvent DebugMessage;
+        public event LogEvent WarningMessage;
+        public event LogEvent ErrorMessage;
+
         [Conditional("DEBUG")]
-        internal void LogVerbose(string message)
-        {   
-            if (Configuration.IsMessageTypeEnabled(NetIncomingMessageType.VerboseDebugMessage))
-                ReleaseMessage(CreateIncomingMessage(NetIncomingMessageType.VerboseDebugMessage, message));
-        }
-        
-        [Conditional("DEBUG")]
-        internal void LogDebug(string message)
+        internal void LogVerbose(in NetLogMessage message)
         {
-            if (Configuration.IsMessageTypeEnabled(NetIncomingMessageType.DebugMessage))
-                ReleaseMessage(CreateIncomingMessage(NetIncomingMessageType.DebugMessage, message));
+            VerboseMessage?.Invoke(this, NetLogLevel.Verbose, message);
         }
 
-        internal void LogWarning(string message)
+        internal void LogDebug(in NetLogMessage message)
         {
-            if (Configuration.IsMessageTypeEnabled(NetIncomingMessageType.WarningMessage))
-                ReleaseMessage(CreateIncomingMessage(NetIncomingMessageType.WarningMessage, message));
+            DebugMessage?.Invoke(this, NetLogLevel.Debug, message);
         }
 
-        internal void LogError(string message)
+        internal void LogWarning(in NetLogMessage message)
         {
-            if (Configuration.IsMessageTypeEnabled(NetIncomingMessageType.ErrorMessage))
-                ReleaseMessage(CreateIncomingMessage(NetIncomingMessageType.ErrorMessage, message));
+            WarningMessage?.Invoke(this, NetLogLevel.Warning, message);
+        }
+
+        internal void LogError(in NetLogMessage message)
+        {
+            ErrorMessage?.Invoke(this, NetLogLevel.Error, message);
         }
     }
 }

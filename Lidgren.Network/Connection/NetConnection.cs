@@ -1,7 +1,7 @@
 ﻿using System;
-using System.Net;
-using System.Diagnostics;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Net;
 
 namespace Lidgren.Network
 {
@@ -11,6 +11,8 @@ namespace Lidgren.Network
     [DebuggerDisplay("{DebuggerDisplay}")]
     public partial class NetConnection : IDisposable
     {
+        public delegate void ConnectionStatusChanged(NetConnection connection, NetConnectionStatus status, NetBuffer? reason);
+
         /// <summary>
         /// Number of heartbeats to skip checking for infrequent events (ping, timeout etc).
         /// </summary>
@@ -24,7 +26,7 @@ namespace Lidgren.Network
         /// <summary>
         /// Number of heartbeats to wait before trying to reclaim fragments.
         /// </summary>
-        private const uint ReclaimFragmentsFrames = 256;
+        private const uint ReclaimFragmentsFrames = 128;
 
         private bool _isDisposed;
         private int _sendBufferWritePtr;
@@ -89,6 +91,8 @@ namespace Lidgren.Network
             }
         }
 
+        public event ConnectionStatusChanged? StatusChanged;
+
         internal NetConnection(NetPeer peer, IPEndPoint remoteEndPoint)
         {
             Peer = peer;
@@ -115,7 +119,7 @@ namespace Lidgren.Network
             RemoteEndPoint = endPoint;
         }
 
-        internal void SetStatus(NetConnectionStatus status, string? reason = null)
+        internal void SetStatus(NetConnectionStatus status, NetBuffer? reason = null)
         {
             // user or library thread
 
@@ -123,23 +127,20 @@ namespace Lidgren.Network
                 return;
             Status = status;
 
-            if (reason == null)
-                reason = string.Empty;
-
             if (Status == NetConnectionStatus.Connected)
             {
                 _timeoutDeadline = NetTime.Now + _peerConfiguration._connectionTimeout;
-                Peer.LogVerbose("Timeout deadline initialized to  " + _timeoutDeadline);
+                Peer.LogVerbose(NetLogMessage.FromTime(NetLogCode.DeadlineTimeoutInitialized, time: _timeoutDeadline));
             }
+
+            StatusChanged?.Invoke(this, status, reason);
 
             if (_peerConfiguration.IsMessageTypeEnabled(NetIncomingMessageType.StatusChanged))
             {
                 NetIncomingMessage info = Peer.CreateIncomingMessage(NetIncomingMessageType.StatusChanged);
-                info.EnsureByteCapacity(4 + reason.Length + (reason.Length > 126 ? 2 : 1));
                 info.SenderConnection = this;
                 info.SenderEndPoint = RemoteEndPoint;
                 info.Write(Status);
-                info.Write(reason);
                 Peer.ReleaseMessage(info);
             }
         }
@@ -160,6 +161,9 @@ namespace Lidgren.Network
                     if (idleTime >= Peer.Configuration.FragmentGroupTimeout)
                     {
                         _fragmentGroupsToDrop.Add(groupId);
+
+                        Peer.LogWarning(NetLogMessage.FromTime(NetLogCode.FragmentGroupTimeout, 
+                            endPoint: this, time: idleTime));
                     }
                 }
 
@@ -170,11 +174,6 @@ namespace Lidgren.Network
                         // TODO: recycle?
                     }
                 }
-
-                if (_fragmentGroupsToDrop.Count > 0)
-                {
-                    Peer.LogWarning(_fragmentGroupsToDrop.Count + " fragment groups timed out at " + now);
-                }
                 _fragmentGroupsToDrop.Clear();
             }
 
@@ -182,8 +181,8 @@ namespace Lidgren.Network
             {
                 if (now > _timeoutDeadline)
                 {
-                    Peer.LogVerbose("Connection timed out at " + now + " deadline was " + _timeoutDeadline);
-                    ExecuteDisconnect("Connection timed out", true);
+                    Peer.LogVerbose(NetLogMessage.FromTime(NetLogCode.ConnectionTimedOut, time: now));
+                    ExecuteDisconnect(NetMessageType.TimedOut);
                     return;
                 }
 
@@ -410,7 +409,7 @@ namespace Lidgren.Network
             switch (type)
             {
                 case NetMessageType.Connect:
-                    Peer.LogDebug("Received handshake message (" + type + ") despite connection being in place");
+                    Peer.LogDebug(new NetLogMessage(NetLogCode.UnexpectedConnect));
                     break;
 
                 case NetMessageType.ConnectResponse:
@@ -423,17 +422,19 @@ namespace Lidgren.Network
                     break;
 
                 case NetMessageType.LibraryError:
-                    Peer.ThrowOrLog(
-                        "LibraryError received by ReceivedMessageCore; this usually indicates a malformed message");
+                    Peer.LogWarning(new NetLogMessage(NetLogCode.UnexpectedLibraryError, null, this));
                     break;
 
+                case NetMessageType.InvalidHandshake:
+                case NetMessageType.WrongAppIdentifier:
+                case NetMessageType.ConnectTimedOut:
+                case NetMessageType.TimedOut:
                 case NetMessageType.Disconnect:
-                    NetIncomingMessage msg = Peer.SetupReadHelperMessage(offset, payloadLength);
-
-                    _disconnectRequested = true;
-                    _disconnectMessage = msg.ReadString();
+                    NetOutgoingMessage msg = Peer.CreateReadHelperOutMessage(offset, payloadLength);
+                    _disconnectMessage = msg;
                     _disconnectReqSendBye = false;
-                    //ExecuteDisconnect(msg.ReadString(), false);
+                    _disconnectRequested = true;
+                    //ExecuteDisconnect(msg, false);
                     break;
 
                 case NetMessageType.Acknowledge:
@@ -468,7 +469,7 @@ namespace Lidgren.Network
                 case NetMessageType.ExpandMTUSuccess:
                     if (Peer.Configuration.AutoExpandMTU == false)
                     {
-                        Peer.LogDebug("Received ExpandMTURequest altho AutoExpandMTU is turned off!");
+                        Peer.LogDebug(new NetLogMessage(NetLogCode.UnexpectedMTUExpandRequest));
                         break;
                     }
                     NetIncomingMessage emsg = Peer.SetupReadHelperMessage(offset, payloadLength);
@@ -483,7 +484,8 @@ namespace Lidgren.Network
                     break;
 
                 default:
-                    Peer.LogWarning("Connection received unhandled library message: " + type);
+                    Peer.LogWarning(NetLogMessage.FromValues(NetLogCode.UnhandledLibraryMessage, 
+                        endPoint: this, value: (int)type));
                     break;
             }
         }
@@ -507,11 +509,21 @@ namespace Lidgren.Network
             NetDeliveryMethod method = NetUtility.GetDeliveryMethod(type);
             NetReceiverChannel channel = method switch
             {
-                NetDeliveryMethod.Unreliable => new NetUnreliableUnorderedReceiver(this),
-                NetDeliveryMethod.UnreliableSequenced => new NetUnreliableSequencedReceiver(this),
-                NetDeliveryMethod.ReliableUnordered => new NetReliableUnorderedReceiver(this, NetConstants.ReliableOrderedWindowSize),
-                NetDeliveryMethod.ReliableSequenced => new NetReliableSequencedReceiver(this, NetConstants.ReliableSequencedWindowSize),
-                NetDeliveryMethod.ReliableOrdered => new NetReliableOrderedReceiver(this, NetConstants.ReliableOrderedWindowSize),
+                NetDeliveryMethod.Unreliable => 
+                new NetUnreliableUnorderedReceiver(this),
+
+                NetDeliveryMethod.UnreliableSequenced =>
+                new NetUnreliableSequencedReceiver(this),
+
+                NetDeliveryMethod.ReliableUnordered => 
+                new NetReliableUnorderedReceiver(this, NetConstants.ReliableOrderedWindowSize),
+
+                NetDeliveryMethod.ReliableSequenced => 
+                new NetReliableSequencedReceiver(this, NetConstants.ReliableSequencedWindowSize),
+
+                NetDeliveryMethod.ReliableOrdered => 
+                new NetReliableOrderedReceiver(this, NetConstants.ReliableOrderedWindowSize),
+
                 _ => throw new ArgumentOutOfRangeException(nameof(type)),
             };
 
@@ -558,9 +570,10 @@ namespace Lidgren.Network
             return (chan.GetAllowedSends() - chan.QueuedSends.Count) > 0;
         }
 
-        internal void Shutdown(string? reason)
+        internal void Shutdown(NetOutgoingMessage? reason)
         {
-            ExecuteDisconnect(reason, true);
+            _disconnectMessage ??= reason;
+            ExecuteDisconnect(_disconnectMessage, true);
         }
 
         /// <summary>
