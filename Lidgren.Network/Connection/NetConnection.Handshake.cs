@@ -215,17 +215,17 @@ namespace Lidgren.Network
             if (LocalHailMessage == null)
                 return;
 
-            byte[]? hi = LocalHailMessage.GetBuffer();
-            if (hi.Length >= LocalHailMessage.ByteLength)
+            int bitsToAppend = LocalHailMessage.BitLength - LocalHailMessage.BitPosition;
+            if (bitsToAppend > 0)
             {
-                if (om.ByteLength + LocalHailMessage.ByteLength > _peerConfiguration._maximumTransmissionUnit - 10)
+                if (om.ByteLength + NetBitWriter.BytesForBits(bitsToAppend) > _peerConfiguration._maximumTransmissionUnit - 10)
                 {
                     Peer.ThrowOrLog(
                         "Hail message too large; can maximally be " +
                         (_peerConfiguration._maximumTransmissionUnit - 10 - om.ByteLength));
                 }
 
-                om.Write(hi.AsSpan(0, LocalHailMessage.ByteLength));
+                om.Write(LocalHailMessage);
             }
         }
 

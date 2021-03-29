@@ -12,7 +12,7 @@ namespace Lidgren.Network
 		FailedNotConnected = 0,
 
 		/// <summary>
-		/// No recipients were specified.
+		/// No recipients were specified or that all given recipients disconnected.
 		/// </summary>
 		NoRecipients = 1,
 
@@ -29,6 +29,6 @@ namespace Lidgren.Network
 		/// <summary>
 		/// Message was discarded and an error message was logged.
 		/// </summary>
-		Dropped = 4
+		Dropped = 4,
 	}
 }

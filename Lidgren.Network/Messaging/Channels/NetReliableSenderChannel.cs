@@ -22,7 +22,7 @@ namespace Lidgren.Network
         public NetReliableSenderChannel(NetConnection connection, int windowSize)
         {
             LidgrenException.AssertIsPowerOfTwo((ulong)windowSize, nameof(windowSize));
-            
+
             _connection = connection;
             _windowSize = windowSize;
             _windowStart = 0;
@@ -35,7 +35,7 @@ namespace Lidgren.Network
         public override int GetAllowedSends()
         {
             int retval = _windowSize - NetUtility.PowOf2Mod(
-                _sendStart + NetConstants.SequenceNumbers - _windowStart, 
+                _sendStart + NetConstants.SequenceNumbers - _windowStart,
                 NetConstants.SequenceNumbers);
 
             LidgrenException.Assert(retval >= 0 && retval <= _windowSize);
@@ -61,7 +61,7 @@ namespace Lidgren.Network
         }
 
         // call this regularely
-        public override void SendQueuedMessages(TimeSpan now)
+        public override NetSocketResult SendQueuedMessages(TimeSpan now)
         {
             TimeSpan resendDelay = ResendDelay;
 
@@ -74,14 +74,15 @@ namespace Lidgren.Network
                 TimeSpan t = storedMessage.LastSent;
                 if (t > TimeSpan.Zero && (now - t) > resendDelay)
                 {
-                    //m_connection.m_peer.LogVerbose(
-                    //    "Resending due to delay #" + storedMessage.SequenceNumber + " " + om.ToString());
-                    _connection.Statistics.MessageResent(MessageResendReason.Delay);
-
-                    _connection.QueueSendMessage(storedMessage.Message, storedMessage.SequenceNumber);
-
+                    var sendResult = _connection.QueueSendMessage(storedMessage.Message, storedMessage.SequenceNumber);
+                    if (!sendResult.Success)
+                    {
+                        return sendResult;
+                    }
                     storedMessage.LastSent = now;
                     storedMessage.NumSent++;
+                    _connection.Statistics.MessageResent(MessageResendReason.Delay);
+
                 }
             }
 
@@ -90,27 +91,37 @@ namespace Lidgren.Network
             {
                 while (num > 0 && QueuedSends.TryDequeue(out NetOutgoingMessage? message))
                 {
-                    ExecuteSend(now, message);
+                    var sendResult = ExecuteSend(now, message);
+                    if (!sendResult.Success)
+                    {
+                        QueuedSends.EnqueueFirst(message);
+                        return sendResult;
+                    }
                     num--;
                     LidgrenException.Assert(num == GetAllowedSends());
                 }
             }
+
+            return new NetSocketResult(true, false);
         }
 
-        private void ExecuteSend(TimeSpan now, NetOutgoingMessage message)
+        private NetSocketResult ExecuteSend(TimeSpan now, NetOutgoingMessage message)
         {
             int seqNr = _sendStart;
-            _sendStart = NetUtility.PowOf2Mod(seqNr + 1, NetConstants.SequenceNumbers);
 
             ref NetStoredReliableMessage storedMessage = ref StoredMessages[NetUtility.PowOf2Mod(seqNr, _windowSize)];
             LidgrenException.Assert(storedMessage.Message == null);
 
-            _connection.QueueSendMessage(message, seqNr);
-
-            storedMessage.SequenceNumber = seqNr;
-            storedMessage.NumSent++;
-            storedMessage.LastSent = now;
-            storedMessage.Message = message;
+            var sendResult = _connection.QueueSendMessage(message, seqNr);
+            if (sendResult.Success)
+            {
+                _sendStart = NetUtility.PowOf2Mod(seqNr + 1, NetConstants.SequenceNumbers);
+                storedMessage.SequenceNumber = seqNr;
+                storedMessage.NumSent++;
+                storedMessage.LastSent = now;
+                storedMessage.Message = message;
+            }
+            return sendResult;
         }
 
         private void DestoreMessage(int storeIndex)
@@ -134,7 +145,7 @@ namespace Lidgren.Network
 
         // remoteWindowStart is remote expected sequence number; everything below this has arrived properly
         // seqNr is the actual nr received
-        public override void ReceiveAcknowledge(TimeSpan now, int seqNr)
+        public override NetSocketResult ReceiveAcknowledge(TimeSpan now, int seqNr)
         {
             ref int windowStart = ref _windowStart;
 
@@ -144,7 +155,7 @@ namespace Lidgren.Network
             if (relate < 0)
             {
                 //m_connection.m_peer.LogDebug("Received late/dupe ack for #" + seqNr);
-                return; // late/duplicate ack
+                return new NetSocketResult(true, false); // late/duplicate ack
             }
 
             int windowSize = _windowSize;
@@ -175,7 +186,7 @@ namespace Lidgren.Network
                     windowStart = NetUtility.PowOf2Mod(windowStart + 1, NetConstants.SequenceNumbers);
                     //m_connection.m_peer.LogDebug("Advancing window to #" + m_windowStart);
                 }
-                return;
+                return new NetSocketResult(true, false);
             }
 
             //
@@ -200,7 +211,7 @@ namespace Lidgren.Network
             {
                 // uh... we haven't sent this message yet? Weird, dupe or error...
                 LidgrenException.Assert(false, "Got ack for message not yet sent?");
-                return;
+                return new NetSocketResult(true, false);
             }
 
             // Ok, lets resend all missing acks
@@ -225,10 +236,13 @@ namespace Lidgren.Network
 
                         if (now - storedMessage.LastSent >= resendDelay)
                         {
+                            var sendResult = _connection.QueueSendMessage(storedMessage.Message, rnr);
+                            if (!sendResult.Success)
+                                return sendResult;
+
                             storedMessage.NumSent++;
                             storedMessage.LastSent = now;
                             _connection.Statistics.MessageResent(MessageResendReason.HoleInSequence);
-                            _connection.QueueSendMessage(storedMessage.Message, rnr);
                         }
                         //else
                         //    already resent recently
@@ -240,6 +254,8 @@ namespace Lidgren.Network
                 //}
             }
             while (rnr != windowStart);
+
+            return new NetSocketResult(true, false);
         }
     }
 }

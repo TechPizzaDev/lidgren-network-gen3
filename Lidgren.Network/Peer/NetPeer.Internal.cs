@@ -2,7 +2,6 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
@@ -377,6 +376,8 @@ namespace Lidgren.Network
                 // do connection heartbeats
                 lock (connections)
                 {
+                    // TODO: iterate starting at different positions?
+
                     // reverse-for so elements can be removed without breaking loop
                     for (int i = connections.Count; i-- > 0;)
                     {
@@ -398,7 +399,13 @@ namespace Lidgren.Network
                     NetOutgoingMessage om = unsent.Message;
                     int length = 0;
                     om.Encode(_sendBuffer, ref length, 0);
-                    SendPacket(length, unsent.EndPoint, 1);
+
+                    var (sent, connReset) = SendPacket(length, unsent.EndPoint, 1);
+                    if (!sent && !connReset)
+                    {
+                        UnsentUnconnectedMessages.EnqueueFirst(unsent);
+                        break;
+                    }
 
                     Interlocked.Decrement(ref om._recyclingCount);
                     if (om._recyclingCount <= 0)
@@ -724,6 +731,12 @@ namespace Lidgren.Network
                     LogWarning(NetLogMessage.FromValues(NetLogCode.UnconnectedLibraryMessage,
                         endPoint: senderEndPoint, value: (int)type));
                     return;
+
+                case NetMessageType.Acknowledge:
+                case NetMessageType.Ping:
+                    LogVerbose(NetLogMessage.FromValues(NetLogCode.UnhandledLibraryMessage,
+                        endPoint: senderEndPoint, value: (int)type));
+                    break;
 
                 default:
                     LogWarning(NetLogMessage.FromValues(NetLogCode.UnhandledLibraryMessage,

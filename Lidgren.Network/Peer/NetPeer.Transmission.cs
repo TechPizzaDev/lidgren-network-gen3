@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 
@@ -26,14 +27,7 @@ namespace Lidgren.Network
         //Avoids allocation on mapping to IPv6
         private IPEndPoint _targetCopy = new IPEndPoint(IPAddress.Any, 0);
 
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <param name="byteCount"></param>
-        /// <param name="target"></param>
-        /// <param name="numMessages"></param>
-        /// <returns>Whether the connection was reset.</returns>
-        internal bool SendPacket(int byteCount, IPEndPoint target, int numMessages)
+        internal NetSocketResult SendPacket(int byteCount, IPEndPoint target, int numMessages)
         {
             // simulate loss
             float loss = Configuration._loss;
@@ -42,7 +36,7 @@ namespace Lidgren.Network
                 if (MWCRandom.Global.NextSingle() < loss)
                 {
                     LogDebug(new NetLogMessage(NetLogCode.SimulatedLoss, endPoint: target));
-                    return false;
+                    return new NetSocketResult(true, false);
                 }
             }
 
@@ -52,16 +46,16 @@ namespace Lidgren.Network
                 Configuration._randomOneWayLatency == TimeSpan.Zero)
             {
                 // no latency simulation
-                var (wasSent, connectionReset) = ActuallySendPacket(_sendBuffer, byteCount, target);
+                var sendResult = ActuallySendPacket(_sendBuffer, byteCount, target);
 
                 // TODO: handle 'wasSent == false' better?
 
-                if ((!wasSent && !connectionReset) ||
-                    Configuration._duplicates > 0f && MWCRandom.Global.NextSingle() < Configuration._duplicates)
-                {
-                    (wasSent, connectionReset) = ActuallySendPacket(_sendBuffer, byteCount, target); // send it again!
-                }
-                return connectionReset;
+                //if ((!wasSent && !connectionReset) ||
+                //    Configuration._duplicates > 0f && MWCRandom.Global.NextSingle() < Configuration._duplicates)
+                //{
+                //    (wasSent, connectionReset) = ActuallySendPacket(_sendBuffer, byteCount, target); // send it again!
+                //}
+                return sendResult;
             }
 
             // simulate latency
@@ -85,7 +79,7 @@ namespace Lidgren.Network
                 LogDebug(NetLogMessage.FromTime(NetLogCode.SimulatedDelay, endPoint: target, time: delay));
             }
 
-            return false;
+            return new NetSocketResult(true, false);
         }
 
         private void SendDelayedPackets()
@@ -119,15 +113,14 @@ namespace Lidgren.Network
             DelayedPackets.Clear();
         }
 
-        // TODO: replace byte[] with Span in the future (held back by Socket.SendTo)
+        // TODO: replace byte[] with Memory<byte> in the future (held back by Socket.SendTo)
         // https://github.com/dotnet/runtime/issues/33418
-        internal (bool Sent, bool ConnectionReset) ActuallySendPacket(byte[] data, int byteCount, IPEndPoint target)
+        internal NetSocketResult ActuallySendPacket(byte[] data, int byteCount, IPEndPoint target)
         {
-            if (Socket == null)
-                throw new InvalidOperationException("No socket bound.");
+            Socket? socket = Socket;
+            Debug.Assert(socket != null);
 
             bool broadcasting = false;
-
             try
             {
                 IPAddress? ba = NetUtility.GetBroadcastAddress();
@@ -141,7 +134,7 @@ namespace Lidgren.Network
                     _targetCopy.Address = Configuration.BroadcastAddress;
                     _targetCopy.Port = target.Port;
 
-                    Socket.EnableBroadcast = true;
+                    socket.EnableBroadcast = true;
                     broadcasting = true;
                 }
                 else if (
@@ -157,7 +150,7 @@ namespace Lidgren.Network
                     _targetCopy.Address = target.Address;
                 }
 
-                int bytesSent = Socket.SendTo(data, 0, byteCount, SocketFlags.None, _targetCopy);
+                int bytesSent = socket.SendTo(data, 0, byteCount, SocketFlags.None, _targetCopy);
                 if (byteCount != bytesSent)
                 {
                     LogWarning(NetLogMessage.FromValues(NetLogCode.FullSendFailure,
@@ -173,12 +166,12 @@ namespace Lidgren.Network
                 {
                     case SocketError.WouldBlock:
                         // send buffer full?
-                        LogWarning(new NetLogMessage(NetLogCode.SocketWouldBlock, sx));
-                        return (false, false);
+                        LogDebug(new NetLogMessage(NetLogCode.SocketWouldBlock, sx));
+                        return new NetSocketResult(false, false);
 
                     case SocketError.ConnectionReset:
                         // connection reset by peer, aka connection forcibly closed aka "ICMP port unreachable" 
-                        return (false, true);
+                        return new NetSocketResult(false, true);
 
                     default:
                         LogError(new NetLogMessage(NetLogCode.SendFailure, sx, target));
@@ -192,9 +185,9 @@ namespace Lidgren.Network
             finally
             {
                 if (broadcasting)
-                    Socket.EnableBroadcast = false;
+                    socket.EnableBroadcast = false;
             }
-            return (true, false);
+            return new NetSocketResult(true, false);
         }
 
         internal bool SendMTUPacket(int byteCount, IPEndPoint target)

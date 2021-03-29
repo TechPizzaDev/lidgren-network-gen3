@@ -521,7 +521,8 @@ namespace Lidgren.Network
         }
 
         /// <summary>
-        /// Append all the bits from a <see cref="IBitBuffer"/> to this buffer.
+        /// Append bits from a <see cref="IBitBuffer"/> to this buffer.
+        /// The position and length of the source buffer are considered.
         /// </summary>
         public static void Write(this IBitBuffer buffer, IBitBuffer sourceBuffer)
         {

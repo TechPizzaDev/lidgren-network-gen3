@@ -55,5 +55,10 @@ namespace Lidgren.Network
 		/// NAT introduction was successful.
 		/// </summary>
 		NatIntroductionSuccess = 1 << 7, // Data (as passed to master server)
+
+		/// <summary>
+		/// Stream of application data is being transferred.
+		/// </summary>
+		DataStream = 1 << 8,		     // Data
 	}
 }

@@ -29,6 +29,9 @@ namespace Lidgren.Network
             }
             destination[offset++] = (byte)num2;
 
+            if ((group & 0b10) != 0)
+                return; // this is a stream fragment
+
             // write variable length fragment chunk size
             uint num3 = (uint)chunkByteSize;
             while (num3 >= 0x80)
@@ -81,6 +84,11 @@ namespace Lidgren.Network
                 if ((num3 & 0x80) == 0)
                 {
                     totalBits = part;
+                    if ((group & 0b10) != 0)
+                    {
+                        // this is a stream fragment
+                        return true;
+                    }
                     break;
                 }
             }

@@ -21,6 +21,8 @@ namespace Lidgren.Network
 
         internal string DebuggerDisplay => $"BitLength = {BitLength}";
 
+        public NetMessageType MessageType => _messageType;
+
         public NetOutgoingMessage(ArrayPool<byte> storagePool) : base(storagePool)
         {
         }
@@ -59,9 +61,6 @@ namespace Lidgren.Network
                 int baseOffset = offset;
                 offset += 2; // reserve space for length
 
-                //
-                // write fragmentation header
-                //
                 NetFragmentationHelper.WriteHeader(
                     destination, ref offset,
                     _fragmentGroup, _fragmentGroupTotalBits, _fragmentChunkByteSize, _fragmentChunkNumber);

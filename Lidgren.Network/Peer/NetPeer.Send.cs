@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO.Pipelines;
 using System.Net;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace Lidgren.Network
 {
@@ -66,7 +68,7 @@ namespace Lidgren.Network
             if (suppressFragmentation || message.GetEncodedSize() <= recipient.CurrentMTU)
             {
                 Interlocked.Increment(ref message._recyclingCount);
-                return recipient.EnqueueMessage(message, method, sequenceChannel);
+                return recipient.EnqueueMessage(message, method, sequenceChannel).Result;
             }
             else
             {
@@ -108,7 +110,7 @@ namespace Lidgren.Network
         /// <param name="sequenceChannel">Sequence channel within the delivery method</param>
         public NetSendResult SendMessage(
             NetOutgoingMessage message,
-            IReadOnlyCollection<NetConnection?> recipients,
+            IEnumerable<NetConnection?> recipients,
             NetDeliveryMethod method,
             int sequenceChannel)
         {
@@ -136,13 +138,13 @@ namespace Lidgren.Network
                 Interlocked.Add(ref message._recyclingCount, recipientCount);
 
                 var retval = NetSendResult.Sent;
-                foreach (NetConnection? conn in recipients)
+                foreach (NetConnection? conn in recipients.AsListEnumerator())
                 {
                     if (conn == null)
                         continue;
 
-                    var result = conn.EnqueueMessage(message, method, sequenceChannel);
-                    if ((int)result > (int)retval)
+                    NetSendResult result = conn.EnqueueMessage(message, method, sequenceChannel).Result;
+                    if (result > retval)
                         retval = result; // return "worst" result
                 }
                 return retval;
@@ -151,6 +153,38 @@ namespace Lidgren.Network
             {
                 // message must be fragmented!
                 return SendFragmentedMessage(message, recipients, method, sequenceChannel);
+            }
+        }
+
+        /// <summary>
+        /// Streams a message to a list of connections.
+        /// </summary>
+        /// <param name="message">The message to stream.</param>
+        /// <param name="recipients">The list of recipients to send to</param>
+        /// <param name="method">How to deliver the message</param>
+        /// <param name="sequenceChannel">Sequence channel within the delivery method</param>
+        public async ValueTask<NetSendResult> StreamMessageAsync(
+            PipeReader message,
+            IEnumerable<NetConnection?> recipients,
+            int sequenceChannel,
+            CancellationToken cancellationToken = default)
+        {
+            List<NetConnection> recipientList = NetConnectionListPool.Rent(recipients);
+            try
+            {
+                if (recipientList.Count == 0)
+                {
+                    return NetSendResult.NoRecipients;
+                }
+                
+                if (recipientList.Count > 1)
+                    throw new NotImplementedException("The method can only send to one recipient at the time.");
+
+                return await SendFragmentedMessage(message, recipientList[0], sequenceChannel, cancellationToken);
+            }
+            finally
+            {
+                NetConnectionListPool.Return(recipientList);
             }
         }
 

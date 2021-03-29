@@ -1,7 +1,11 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.IO.Pipelines;
 using System.Net;
+using System.Threading.Tasks;
 
 namespace Lidgren.Network
 {
@@ -11,7 +15,8 @@ namespace Lidgren.Network
     [DebuggerDisplay("{DebuggerDisplay}")]
     public partial class NetConnection : IDisposable
     {
-        public delegate void ConnectionStatusChanged(NetConnection connection, NetConnectionStatus status, NetBuffer? reason);
+        public delegate void ConnectionStatusChanged(
+            NetConnection connection, NetConnectionStatus status, NetOutgoingMessage? reason);
 
         /// <summary>
         /// Number of heartbeats to skip checking for infrequent events (ping, timeout etc).
@@ -32,12 +37,14 @@ namespace Lidgren.Network
         private int _sendBufferWritePtr;
         private int _sendBufferNumMessages;
         internal NetPeerConfiguration _peerConfiguration;
-        internal NetSenderChannel?[] _sendChannels;
-        internal NetReceiverChannel?[] _receiveChannels;
-        internal NetQueue<(NetMessageType Type, int SequenceNumber)> _queuedOutgoingAcks;
-        internal NetQueue<(NetMessageType Type, int SequenceNumber)> _queuedIncomingAcks;
-        internal Dictionary<int, ReceivedFragmentGroup> _receivedFragmentGroups;
-        private List<int> _fragmentGroupsToDrop;
+        internal NetSenderChannel?[] _sendChannels = new NetSenderChannel[NetConstants.TotalChannels];
+        internal NetReceiverChannel?[] _receiveChannels = new NetReceiverChannel[NetConstants.TotalChannels];
+        internal NetQueue<(NetMessageType Type, int SequenceNumber)> _queuedOutgoingAcks = new(16);
+        internal NetQueue<(NetMessageType Type, int SequenceNumber)> _queuedIncomingAcks = new(16);
+        internal Dictionary<int, ReceivedNormalFragmentGroup> _receivedNormalFragmentGroups = new();
+        internal Dictionary<int, ReceivedStreamFragmentGroup> _receivedStreamFragmentGroups = new();
+        internal ConcurrentQueue<PipeReader> _openedStreamGroups = new();
+        private List<int> _fragmentGroupsToDrop = new();
 
         internal string DebuggerDisplay =>
             $"RemoteUniqueIdentifier = {RemoteUniqueIdentifier}, RemoteEndPoint = {RemoteEndPoint}";
@@ -99,12 +106,6 @@ namespace Lidgren.Network
             _peerConfiguration = Peer.Configuration;
             Status = NetConnectionStatus.None;
             RemoteEndPoint = remoteEndPoint;
-            _sendChannels = new NetSenderChannel[NetConstants.TotalChannels];
-            _receiveChannels = new NetReceiverChannel[NetConstants.TotalChannels];
-            _queuedOutgoingAcks = new NetQueue<(NetMessageType, int)>(16);
-            _queuedIncomingAcks = new NetQueue<(NetMessageType, int)>(16);
-            _receivedFragmentGroups = new Dictionary<int, ReceivedFragmentGroup>();
-            _fragmentGroupsToDrop = new List<int>();
             Statistics = new NetConnectionStatistics(this);
             AverageRoundtripTime = default;
             CurrentMTU = _peerConfiguration.MaximumTransmissionUnit;
@@ -119,7 +120,7 @@ namespace Lidgren.Network
             RemoteEndPoint = endPoint;
         }
 
-        internal void SetStatus(NetConnectionStatus status, NetBuffer? reason = null)
+        internal void SetStatus(NetConnectionStatus status, NetOutgoingMessage? reason = null)
         {
             // user or library thread
 
@@ -133,7 +134,7 @@ namespace Lidgren.Network
                 Peer.LogVerbose(NetLogMessage.FromTime(NetLogCode.DeadlineTimeoutInitialized, time: _timeoutDeadline));
             }
 
-            StatusChanged?.Invoke(this, status, reason);
+            StatusChanged?.Invoke(this, Status, reason);
 
             if (_peerConfiguration.IsMessageTypeEnabled(NetIncomingMessageType.StatusChanged))
             {
@@ -155,21 +156,21 @@ namespace Lidgren.Network
 
             if (NetUtility.PowOf2Mod(frameCounter, ReclaimFragmentsFrames) == 0)
             {
-                foreach ((int groupId, ReceivedFragmentGroup group) in _receivedFragmentGroups)
+                foreach ((int groupId, ReceivedNormalFragmentGroup group) in _receivedNormalFragmentGroups)
                 {
                     TimeSpan idleTime = now - group.LastReceived;
                     if (idleTime >= Peer.Configuration.FragmentGroupTimeout)
                     {
                         _fragmentGroupsToDrop.Add(groupId);
 
-                        Peer.LogWarning(NetLogMessage.FromTime(NetLogCode.FragmentGroupTimeout, 
+                        Peer.LogWarning(NetLogMessage.FromTime(NetLogCode.FragmentGroupTimeout,
                             endPoint: this, time: idleTime));
                     }
                 }
 
                 foreach (int groupId in _fragmentGroupsToDrop)
                 {
-                    if (_receivedFragmentGroups.Remove(groupId, out ReceivedFragmentGroup? group))
+                    if (_receivedNormalFragmentGroups.Remove(groupId, out ReceivedNormalFragmentGroup? group))
                     {
                         // TODO: recycle?
                     }
@@ -263,7 +264,12 @@ namespace Lidgren.Network
                     if (channel == null)
                         continue;
 
-                    channel.ReceiveAcknowledge(now, incAck.SequenceNumber);
+                    var receiveResult = channel.ReceiveAcknowledge(now, incAck.SequenceNumber);
+                    if (!receiveResult.Success)
+                    {
+                        _queuedIncomingAcks.EnqueueFirst(incAck);
+                        break;
+                    }
                 }
             }
 
@@ -276,7 +282,9 @@ namespace Lidgren.Network
                     NetSenderChannel? channel = _sendChannels[i];
                     LidgrenException.Assert(_sendBufferWritePtr < 1 || _sendBufferNumMessages > 0);
                     if (channel != null)
+                    {
                         channel.SendQueuedMessages(now);
+                    }
                     LidgrenException.Assert(_sendBufferWritePtr < 1 || _sendBufferNumMessages > 0);
                 }
             }
@@ -294,7 +302,7 @@ namespace Lidgren.Network
 
         // Queue an item for immediate sending on the wire
         // This method is called from the ISenderChannels
-        internal void QueueSendMessage(NetOutgoingMessage om, int seqNr)
+        internal NetSocketResult QueueSendMessage(NetOutgoingMessage om, int seqNr)
         {
             Peer.AssertIsOnLibraryThread();
 
@@ -306,7 +314,10 @@ namespace Lidgren.Network
                 if (_sendBufferWritePtr > 0 && _sendBufferNumMessages > 0)
                 {
                     // previous message in buffer; send these first
-                    Peer.SendPacket(_sendBufferWritePtr, RemoteEndPoint, _sendBufferNumMessages);
+                    var sendResult = Peer.SendPacket(_sendBufferWritePtr, RemoteEndPoint, _sendBufferNumMessages);
+                    if (!sendResult.Success)
+                        return sendResult;
+
                     Statistics.PacketSent(_sendBufferWritePtr, _sendBufferNumMessages);
                     _sendBufferWritePtr = 0;
                     _sendBufferNumMessages = 0;
@@ -320,11 +331,21 @@ namespace Lidgren.Network
             if (_sendBufferWritePtr > CurrentMTU)
             {
                 // send immediately; we're already over MTU
-                Peer.SendPacket(_sendBufferWritePtr, RemoteEndPoint, _sendBufferNumMessages);
+                var sendResult = Peer.SendPacket(_sendBufferWritePtr, RemoteEndPoint, _sendBufferNumMessages);
+                if (!sendResult.Success)
+                    return sendResult;
+
                 Statistics.PacketSent(_sendBufferWritePtr, _sendBufferNumMessages);
                 _sendBufferWritePtr = 0;
                 _sendBufferNumMessages = 0;
             }
+
+            return new NetSocketResult(true, false);
+        }
+
+        public bool TryDequeueDataStream([MaybeNullWhen(false)] out PipeReader reader)
+        {
+            return _openedStreamGroups.TryDequeue(out reader);
         }
 
         /// <summary>
@@ -338,12 +359,32 @@ namespace Lidgren.Network
             return Peer.SendMessage(message, this, method, sequenceChannel);
         }
 
+        /// <summary>
+        /// Stream a message to this remote connection.
+        /// </summary>
+        /// <param name="message">The message to stream.</param>
+        /// <param name="method">How to deliver the message</param>
+        /// <param name="sequenceChannel">Sequence channel within the delivery method</param>
+        public async ValueTask<NetSendResult> StreamMessageAsync(PipeReader message, int sequenceChannel)
+        {
+            List<NetConnection> recipientList = NetConnectionListPool.Rent(1);
+            try
+            {
+                recipientList.Add(this);
+                return await Peer.StreamMessageAsync(message, recipientList, sequenceChannel);
+            }
+            finally
+            {
+                NetConnectionListPool.Return(recipientList);
+            }
+        }
+
         // called by SendMessage() and NetPeer.SendMessage; ie. may be user thread
-        internal NetSendResult EnqueueMessage(
+        internal (NetSendResult Result, NetSenderChannel? Channel) EnqueueMessage(
             NetOutgoingMessage message, NetDeliveryMethod method, int sequenceChannel)
         {
             if (Status != NetConnectionStatus.Connected)
-                return NetSendResult.FailedNotConnected;
+                return (NetSendResult.FailedNotConnected, null);
 
             var type = (NetMessageType)((int)method + sequenceChannel);
             message._messageType = type;
@@ -360,7 +401,7 @@ namespace Lidgren.Network
                 Peer.ThrowOrLog("Reliable message too large! Fragmentation failure?");
 
             NetSendResult sendResult = chan.Enqueue(message);
-            return sendResult;
+            return (sendResult, chan);
         }
 
         // may be on user thread
@@ -431,6 +472,7 @@ namespace Lidgren.Network
                 case NetMessageType.TimedOut:
                 case NetMessageType.Disconnect:
                     NetOutgoingMessage msg = Peer.CreateReadHelperOutMessage(offset, payloadLength);
+                    msg._messageType = type;
                     _disconnectMessage = msg;
                     _disconnectReqSendBye = false;
                     _disconnectRequested = true;
@@ -484,7 +526,7 @@ namespace Lidgren.Network
                     break;
 
                 default:
-                    Peer.LogWarning(NetLogMessage.FromValues(NetLogCode.UnhandledLibraryMessage, 
+                    Peer.LogWarning(NetLogMessage.FromValues(NetLogCode.UnhandledLibraryMessage,
                         endPoint: this, value: (int)type));
                     break;
             }
@@ -509,19 +551,19 @@ namespace Lidgren.Network
             NetDeliveryMethod method = NetUtility.GetDeliveryMethod(type);
             NetReceiverChannel channel = method switch
             {
-                NetDeliveryMethod.Unreliable => 
+                NetDeliveryMethod.Unreliable =>
                 new NetUnreliableUnorderedReceiver(this),
 
                 NetDeliveryMethod.UnreliableSequenced =>
                 new NetUnreliableSequencedReceiver(this),
 
-                NetDeliveryMethod.ReliableUnordered => 
+                NetDeliveryMethod.ReliableUnordered =>
                 new NetReliableUnorderedReceiver(this, NetConstants.ReliableOrderedWindowSize),
 
-                NetDeliveryMethod.ReliableSequenced => 
+                NetDeliveryMethod.ReliableSequenced =>
                 new NetReliableSequencedReceiver(this, NetConstants.ReliableSequencedWindowSize),
 
-                NetDeliveryMethod.ReliableOrdered => 
+                NetDeliveryMethod.ReliableOrdered =>
                 new NetReliableOrderedReceiver(this, NetConstants.ReliableOrderedWindowSize),
 
                 _ => throw new ArgumentOutOfRangeException(nameof(type)),

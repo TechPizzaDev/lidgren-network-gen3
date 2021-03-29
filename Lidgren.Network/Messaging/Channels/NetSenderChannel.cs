@@ -12,8 +12,8 @@ namespace Lidgren.Network
 		public abstract int GetAllowedSends();
 
 		public abstract NetSendResult Enqueue(NetOutgoingMessage message);
-		public abstract void SendQueuedMessages(TimeSpan now);
+		public abstract NetSocketResult SendQueuedMessages(TimeSpan now);
 		public abstract void Reset();
-		public abstract void ReceiveAcknowledge(TimeSpan now, int sequenceNumber);
+		public abstract NetSocketResult ReceiveAcknowledge(TimeSpan now, int sequenceNumber);
 	}
 }

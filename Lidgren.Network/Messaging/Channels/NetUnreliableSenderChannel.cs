@@ -82,43 +82,48 @@ namespace Lidgren.Network
             return NetSendResult.Sent;
         }
 
-        // call this regularely
-        public override void SendQueuedMessages(TimeSpan now)
+        public override NetSocketResult SendQueuedMessages(TimeSpan now)
         {
             int num = GetAllowedSends();
-            while (num > 0)
+            while (num > 0 && QueuedSends.TryDequeue(out NetOutgoingMessage? om))
             {
-                if (!QueuedSends.TryDequeue(out NetOutgoingMessage? om))
-                    break;
-
-                ExecuteSend(om);
+                var sendResult = ExecuteSend(om);
+                if (!sendResult.Success)
+                {
+                    QueuedSends.EnqueueFirst(om);
+                    return sendResult;
+                }
                 num--;
             }
+            return new NetSocketResult(true, false);
         }
 
-        private void ExecuteSend(NetOutgoingMessage message)
+        private NetSocketResult ExecuteSend(NetOutgoingMessage message)
         {
             _connection.Peer.AssertIsOnLibraryThread();
 
             int seqNr = _sendStart;
-            _sendStart = NetUtility.PowOf2Mod(_sendStart + 1, NetConstants.SequenceNumbers);
+            var sendResult = _connection.QueueSendMessage(message, seqNr);
+            if (sendResult.Success)
+            {
+                _sendStart = NetUtility.PowOf2Mod(seqNr + 1, NetConstants.SequenceNumbers);
 
-            _connection.QueueSendMessage(message, seqNr);
-
-            Interlocked.Decrement(ref message._recyclingCount);
-            if (message._recyclingCount <= 0)
-                _connection.Peer.Recycle(message);
+                Interlocked.Decrement(ref message._recyclingCount);
+                if (message._recyclingCount <= 0)
+                    _connection.Peer.Recycle(message);
+            }
+            return sendResult;
         }
 
         // remoteWindowStart is remote expected sequence number; everything below this has arrived properly
         // seqNr is the actual nr received
-        public override void ReceiveAcknowledge(TimeSpan now, int seqNr)
+        public override NetSocketResult ReceiveAcknowledge(TimeSpan now, int seqNr)
         {
             if (!_doFlowControl)
             {
                 // we have no use for acks on this channel since we don't respect the window anyway
                 _connection.Peer.LogWarning(new NetLogMessage(NetLogCode.SuppressedUnreliableAck, endPoint: _connection));
-                return;
+                return new NetSocketResult(true, false);
             }
 
             // late (dupe), on time or early ack?
@@ -127,7 +132,7 @@ namespace Lidgren.Network
             if (relate < 0)
             {
                 //m_connection.m_peer.LogDebug("Received late/dupe ack for #" + seqNr);
-                return; // late/duplicate ack
+                return new NetSocketResult(true, false); // late/duplicate ack
             }
 
             if (relate == 0)
@@ -139,7 +144,7 @@ namespace Lidgren.Network
 
                 _receivedAcks[_windowStart] = false;
                 _windowStart = NetUtility.PowOf2Mod(_windowStart + 1, NetConstants.SequenceNumbers);
-                return;
+                return new NetSocketResult(true, false);
             }
 
             // Advance window to this position
@@ -150,6 +155,8 @@ namespace Lidgren.Network
                 _receivedAcks[_windowStart] = false;
                 _windowStart = NetUtility.PowOf2Mod(_windowStart + 1, NetConstants.SequenceNumbers);
             }
+
+            return new NetSocketResult(true, false);
         }
     }
 }

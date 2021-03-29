@@ -294,11 +294,11 @@ namespace Lidgren.Network
         /// <summary>
         /// Send raw bytes; only used for debugging. 
         /// </summary>
-        public void RawSend(byte[] buffer, int offset, int length, IPEndPoint destination)
+        public NetSocketResult RawSend(byte[] buffer, int offset, int length, IPEndPoint destination)
         {
             // wrong thread might crash with network thread
             Array.Copy(buffer, offset, _sendBuffer, 0, length);
-            SendPacket(length, destination, 1);
+            return SendPacket(length, destination, 1);
         }
 
         /// <summary>

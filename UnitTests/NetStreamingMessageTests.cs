@@ -1,5 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
+using System.IO.Pipelines;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
@@ -31,6 +33,11 @@ namespace UnitTests
                 void Server_ErrorMessage(NetPeer sender, NetLogLevel level, in NetLogMessage message)
                 {
                     Console.WriteLine("Server " + level + ": " + message.Code);
+
+                    if (level > NetLogLevel.Debug)
+                        Console.WriteLine(message.Exception);
+                    else
+                        Console.WriteLine();
                 }
                 server.DebugMessage += Server_ErrorMessage;
                 server.WarningMessage += Server_ErrorMessage;
@@ -50,7 +57,7 @@ namespace UnitTests
                 });
 
                 int count = clientCount;
-                while (count > 0 && server.TryReadMessage(60000, out var message))
+                while (count > 0 && server.TryReadMessage(60000 * 2, out var message))
                 {
                     switch (message.MessageType)
                     {
@@ -70,6 +77,28 @@ namespace UnitTests
                             count--;
                             break;
 
+                        case NetIncomingMessageType.DataStream:
+                            if (message.SenderConnection!.TryDequeueDataStream(out PipeReader? reader))
+                            {
+                                Task.Run(async () =>
+                                {
+                                    Stream stream = reader.AsStream();
+                                    byte[] buffer = new byte[1024 * 1024];
+
+                                    using (var fs = new FileStream("receivedfile", FileMode.Create))
+                                    {
+                                        int read;
+                                        while ((read = await stream.ReadAsync(buffer)) > 0)
+                                        {
+                                            Console.WriteLine("READ " + read + " FROM CLIENT STREAM");
+                                            fs.Write(buffer.AsSpan(0, read));
+                                        }
+                                    }
+
+                                    Console.WriteLine("CLIENT STREAM COMPLETED ON SERVER");
+                                });
+                            }
+                            break;
 
                         default:
                             Console.WriteLine("Server " + message.MessageType);
@@ -107,7 +136,15 @@ namespace UnitTests
 
                     void Client_ErrorMessage(NetPeer sender, NetLogLevel level, in NetLogMessage message)
                     {
+                        if (message.Code == NetLogCode.SocketWouldBlock)
+                            return;
+
                         Console.WriteLine("Client " + level + ": " + message.Code);
+
+                        if (level > NetLogLevel.Debug)
+                            Console.WriteLine(message.Exception);
+                        else
+                            Console.WriteLine();
                     }
                     client.DebugMessage += Client_ErrorMessage;
                     client.WarningMessage += Client_ErrorMessage;
@@ -132,17 +169,24 @@ namespace UnitTests
                     NetConnection connection = client.Connect(new IPEndPoint(IPAddress.Loopback, port));
 
                     bool stop = false;
-                    void Connection_StatusChanged(NetConnection connection, NetConnectionStatus status, NetBuffer? reason)
+                    void Connection_StatusChanged(NetConnection connection, NetConnectionStatus status, NetOutgoingMessage? reason)
                     {
                         string print = "Client Status: " + status;
-                        if (status == NetConnectionStatus.Disconnected)
+                        if (reason != null)
                         {
-                            print += " (" + reason?.ReadString() + ")";
-                            stop = true;
-                        }
-                        else if (status == NetConnectionStatus.Connected)
-                        {
-                            print += " (" + connection?.RemoteHailMessage?.ReadString() + ")";
+                            print += " #" + reason.MessageType;
+                            if (reason.BitLength != 0)
+                            {
+                                if (status == NetConnectionStatus.Disconnected)
+                                {
+                                    print += " (" + reason?.ReadString() + ")";
+                                    stop = true;
+                                }
+                                else if (status == NetConnectionStatus.Connected)
+                                {
+                                    print += " (" + connection?.RemoteHailMessage?.ReadString() + ")";
+                                }
+                            }
                         }
                         Console.WriteLine(print);
                     }
@@ -162,13 +206,17 @@ namespace UnitTests
                         Thread.Sleep(1);
                     }
 
-                    Task.Run(() =>
+                    Task.Run(async () =>
                     {
                         try
                         {
-                            NetOutgoingMessage outMsg = client.CreateMessage();
-                            outMsg.WritePadBytes(1024 * 1024 * 128);
-                            var r = connection.SendMessage(outMsg, NetDeliveryMethod.ReliableOrdered, 0);
+                            using var fs = File.OpenRead(
+                                @"C:\Users\Michal Piatkowski\Downloads\mcdata-e82ef9224544edb712a06627bbb1d1de5211e5ed.zip"
+                            );
+                            PipeReader reader = PipeReader.Create(fs);
+                            await connection.StreamMessageAsync(reader, 0);
+
+                            Console.WriteLine("FINISHED SENDING FILE from thread " + tt);
                         }
                         catch (Exception ex)
                         {

@@ -44,6 +44,23 @@ namespace Lidgren.Network
             return new List<NetConnection>(GetMaxSizeForBucket(bucketIndex));
         }
 
+        public static List<NetConnection> Rent(IEnumerable<NetConnection?> recipients)
+        {
+            int count = 0;
+            if (recipients is ICollection<NetConnection> coll)
+                count = coll.Count;
+            else if (recipients is IReadOnlyCollection<NetConnection> roColl)
+                count = roColl.Count;
+
+            List<NetConnection> list = Rent(count);
+            foreach (NetConnection? recipient in recipients.AsListEnumerator())
+            {
+                if (recipient != null)
+                    list.Add(recipient);
+            }
+            return list;
+        }
+
         /// <summary>
         /// Returns a <see cref="List{T}"/> to the pool. 
         /// The list is cleared can be rented by <see cref="Rent"/>.
