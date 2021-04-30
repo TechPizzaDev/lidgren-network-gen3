@@ -17,7 +17,7 @@ namespace UnitTests
 
             string appId = "NetStreamingMessages";
             int port = 20002;
-            int clientCount = 1;
+            int clientCount = 10;
 
             var serverThread = new Thread(() =>
             {
@@ -85,12 +85,13 @@ namespace UnitTests
                                     Stream stream = reader.AsStream();
                                     byte[] buffer = new byte[1024 * 1024];
 
-                                    using (var fs = new FileStream("receivedfile", FileMode.Create))
+                                    //using (var fs = new FileStream("receivedfile", FileMode.Create))
+                                    var fs = Stream.Null;
                                     {
                                         int read;
                                         while ((read = await stream.ReadAsync(buffer)) > 0)
                                         {
-                                            Console.WriteLine("READ " + read + " FROM CLIENT STREAM");
+                                            //Console.WriteLine("READ " + read + " FROM CLIENT STREAM");
                                             fs.Write(buffer.AsSpan(0, read));
                                         }
                                     }
@@ -210,9 +211,7 @@ namespace UnitTests
                     {
                         try
                         {
-                            using var fs = File.OpenRead(
-                                @"C:\Users\Michal Piatkowski\Downloads\mcdata-e82ef9224544edb712a06627bbb1d1de5211e5ed.zip"
-                            );
+                            var fs = new FakeReadStream(1024 * 1024 * 10);
                             PipeReader reader = PipeReader.Create(fs);
                             await connection.StreamMessageAsync(reader, 0);
 

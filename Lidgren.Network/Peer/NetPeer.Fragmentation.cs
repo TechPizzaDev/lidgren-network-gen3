@@ -24,8 +24,6 @@ namespace Lidgren.Network
     internal class ReceivedStreamFragmentGroup
     {
         public Pipe Pipe = new();
-
-
     }
 
     public enum NetStreamFragmentType
@@ -34,35 +32,6 @@ namespace Lidgren.Network
         EndOfStream,
         Cancelled,
         ServerError
-    }
-
-    static class WaitAsyncHelper
-    {
-        public static async Task<bool> WaitOneAsync(this WaitHandle handle, int millisecondsTimeout, CancellationToken cancellationToken)
-        {
-            RegisteredWaitHandle? registeredHandle = null;
-            CancellationTokenRegistration tokenRegistration = default;
-            try
-            {
-                var tcs = new TaskCompletionSource<bool>();
-                registeredHandle = ThreadPool.RegisterWaitForSingleObject(
-                    handle,
-                    (state, timedOut) => ((TaskCompletionSource<bool>)state!).TrySetResult(!timedOut),
-                    tcs,
-                    millisecondsTimeout,
-                    true);
-                tokenRegistration = cancellationToken.Register(
-                    state => ((TaskCompletionSource<bool>)state!).TrySetCanceled(),
-                    tcs);
-                return await tcs.Task;
-            }
-            finally
-            {
-                if (registeredHandle != null)
-                    registeredHandle.Unregister(null);
-                tokenRegistration.Dispose();
-            }
-        }
     }
 
     public partial class NetPeer
@@ -150,8 +119,18 @@ namespace Lidgren.Network
             return retval;
         }
 
+        private NetOutgoingMessage CreateStreamChunk(int length, int group, NetStreamFragmentType type)
+        {
+            NetOutgoingMessage chunk = CreateMessage(length);
+            chunk._fragmentGroup = group << 2 | 0b11;
+            chunk._fragmentGroupTotalBits = (int)type;
+            chunk._fragmentChunkByteSize = 0;
+            chunk._fragmentChunkNumber = 0;
+            return chunk;
+        }
+
         // on user thread
-        private async ValueTask<NetSendResult> SendFragmentedMessage(
+        private async ValueTask<NetSendResult> SendFragmentedMessageAsync(
             PipeReader reader,
             NetConnection recipient,
             int sequenceChannel,
@@ -159,52 +138,40 @@ namespace Lidgren.Network
         {
             int group = GetNextFragmentGroup();
 
-            NetOutgoingMessage CreateStreamChunk(int length, NetStreamFragmentType type)
-            {
-                NetOutgoingMessage chunk = CreateMessage(length);
-                chunk._fragmentGroup = group << 2 | 0b11;
-                chunk._fragmentGroupTotalBits = (int)type;
-                chunk._fragmentChunkByteSize = 0;
-                chunk._fragmentChunkNumber = 0;
-                return chunk;
-            }
-
             (NetSendResult Result, NetSenderChannel?) SendChunk(NetOutgoingMessage chunk)
             {
                 return recipient.EnqueueMessage(chunk, NetDeliveryMethod.ReliableOrdered, sequenceChannel);
             }
 
-            NetSendResult finalResult = NetSendResult.Sent;
+            NetSendResult finalResult;
             Exception? exception = null;
             try
             {
                 ReadResult readResult;
-                bool sentEnding = false;
                 do
                 {
                     readResult = await reader.ReadAsync(cancellationToken).ConfigureAwait(false);
                     if (readResult.IsCanceled)
                     {
-                        NetOutgoingMessage cancelChunk = CreateStreamChunk(0, NetStreamFragmentType.Cancelled);
+                        NetOutgoingMessage cancelChunk = CreateStreamChunk(0, group, NetStreamFragmentType.Cancelled);
                         finalResult = SendChunk(cancelChunk).Result;
                         break;
                     }
 
                     ReadOnlySequence<byte> buffer = readResult.Buffer;
-                    ReadOnlySequence<byte> slice = buffer;
 
                     int mtu = recipient.CurrentMTU;
-                    int bytesPerChunk = NetFragmentationHelper.GetBestChunkSize(group, (int)slice.Length, mtu);
+                    int bytesPerChunk = NetFragmentationHelper.GetBestChunkSize(group, (int)buffer.Length, mtu);
 
-                    while (slice.Length > 0)
+                    while (buffer.Length > 0)
                     {
-                        long chunkLength = Math.Min(slice.Length, bytesPerChunk);
-                        NetOutgoingMessage chunk = CreateStreamChunk((int)chunkLength, NetStreamFragmentType.Data);
-                        foreach (ReadOnlyMemory<byte> memory in slice.Slice(0, chunkLength))
+                        long chunkLength = Math.Min(buffer.Length, bytesPerChunk);
+                        NetOutgoingMessage chunk = CreateStreamChunk((int)chunkLength, group, NetStreamFragmentType.Data);
+                        foreach (ReadOnlyMemory<byte> memory in buffer.Slice(0, chunkLength))
                         {
                             chunk.Write(memory.Span);
                         }
-                        slice = slice.Slice(chunkLength);
+                        buffer = buffer.Slice(chunkLength);
 
                         LidgrenException.Assert(chunk.GetEncodedSize() <= mtu);
                         Interlocked.Add(ref chunk._recyclingCount, 1);
@@ -212,32 +179,29 @@ namespace Lidgren.Network
                         var (result, channel) = SendChunk(chunk);
                         if (result == NetSendResult.Queued)
                         {
-                            await Task.Delay(100, cancellationToken).ConfigureAwait(false);
+                            await channel!.WaitForIdleAsync(millisecondsTimeout: 10000, cancellationToken);
                         }
                         else if (result != NetSendResult.Sent)
                         {
-                            NetOutgoingMessage cancelChunk = CreateStreamChunk(0, NetStreamFragmentType.Cancelled);
+                            NetOutgoingMessage cancelChunk = CreateStreamChunk(0, group, NetStreamFragmentType.Cancelled);
                             finalResult = SendChunk(cancelChunk).Result;
                             reader.CancelPendingRead();
                             break;
                         }
                     }
 
-                    reader.AdvanceTo(buffer.End);
+                    reader.AdvanceTo(readResult.Buffer.End);
                 }
                 while (!readResult.IsCompleted);
 
-                if (!sentEnding)
-                {
-                    NetOutgoingMessage endChunk = CreateStreamChunk(0, NetStreamFragmentType.EndOfStream);
-                    finalResult = SendChunk(endChunk).Result;
-                }
+                NetOutgoingMessage endChunk = CreateStreamChunk(0, group, NetStreamFragmentType.EndOfStream);
+                finalResult = SendChunk(endChunk).Result;
             }
             catch (Exception ex)
             {
                 exception = ex;
 
-                NetOutgoingMessage errorChunk = CreateStreamChunk(0, NetStreamFragmentType.ServerError);
+                NetOutgoingMessage errorChunk = CreateStreamChunk(0, group, NetStreamFragmentType.ServerError);
                 finalResult = SendChunk(errorChunk).Result;
             }
 

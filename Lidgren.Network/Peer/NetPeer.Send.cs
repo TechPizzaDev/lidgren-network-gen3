@@ -160,9 +160,8 @@ namespace Lidgren.Network
         /// Streams a message to a list of connections.
         /// </summary>
         /// <param name="message">The message to stream.</param>
-        /// <param name="recipients">The list of recipients to send to</param>
-        /// <param name="method">How to deliver the message</param>
-        /// <param name="sequenceChannel">Sequence channel within the delivery method</param>
+        /// <param name="recipients">The list of recipients to send to.</param>
+        /// <param name="sequenceChannel">Sequence channel within <see cref="NetDeliveryMethod.ReliableOrdered"/>.</param>
         public async ValueTask<NetSendResult> StreamMessageAsync(
             PipeReader message,
             IEnumerable<NetConnection?> recipients,
@@ -180,7 +179,7 @@ namespace Lidgren.Network
                 if (recipientList.Count > 1)
                     throw new NotImplementedException("The method can only send to one recipient at the time.");
 
-                return await SendFragmentedMessage(message, recipientList[0], sequenceChannel, cancellationToken);
+                return await SendFragmentedMessageAsync(message, recipientList[0], sequenceChannel, cancellationToken);
             }
             finally
             {

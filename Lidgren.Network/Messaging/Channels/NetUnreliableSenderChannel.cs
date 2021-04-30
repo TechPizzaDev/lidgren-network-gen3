@@ -70,11 +70,11 @@ namespace Lidgren.Network
             if (message.BitLength >= ushort.MaxValue &&
                 _connection._peerConfiguration.UnreliableSizeBehaviour == NetUnreliableSizeBehaviour.IgnoreMTU)
             {
-                _connection.Peer.LogError(NetLogMessage.FromValues(NetLogCode.MessageSizeExceeded, 
-                    endPoint: _connection, 
+                _connection.Peer.LogError(NetLogMessage.FromValues(NetLogCode.MessageSizeExceeded,
+                    endPoint: _connection,
                     value: message.BitLength,
                     maxValue: ushort.MaxValue));
-                
+
                 return NetSendResult.Dropped;
             }
 
@@ -95,6 +95,9 @@ namespace Lidgren.Network
                 }
                 num--;
             }
+
+            NotifyIdleWaiters(now, num);
+
             return new NetSocketResult(true, false);
         }
 

@@ -599,7 +599,7 @@ namespace Lidgren.Network
             }
 
             windowSize = chan.WindowSize;
-            freeWindowSlots = chan.GetAllowedSends() - chan.QueuedSends.Count;
+            freeWindowSlots = chan.GetFreeWindowSlots();
             return;
         }
 
@@ -609,7 +609,7 @@ namespace Lidgren.Network
             NetSenderChannel? chan = _sendChannels[channelSlot];
             if (chan == null)
                 return true;
-            return (chan.GetAllowedSends() - chan.QueuedSends.Count) > 0;
+            return chan.GetFreeWindowSlots() > 0;
         }
 
         internal void Shutdown(NetOutgoingMessage? reason)

@@ -102,6 +102,8 @@ namespace Lidgren.Network
                 }
             }
 
+            NotifyIdleWaiters(now, num);
+
             return new NetSocketResult(true, false);
         }
 
