@@ -615,12 +615,12 @@ namespace Lidgren.Network
             }
             else if (Unsafe.SizeOf<TEnum>() == 4)
             {
-                uint v = (uint)EnumConverter.ToUInt64(value);
+                int v = Unsafe.As<TEnum, int>(ref value);
                 buffer.WriteVar(v);
             }
             else
             {
-                ulong v = EnumConverter.ToUInt64(value);
+                long v = Unsafe.As<TEnum, long>(ref value);
                 buffer.WriteVar(v);
             }
         }

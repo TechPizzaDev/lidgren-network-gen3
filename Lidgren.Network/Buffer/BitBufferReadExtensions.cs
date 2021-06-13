@@ -882,13 +882,13 @@ namespace Lidgren.Network
             }
             else if (Unsafe.SizeOf<TEnum>() == 4)
             {
-                ulong value = buffer.ReadVarUInt32();
-                return EnumConverter.ToEnum<TEnum>(value);
+                int b = buffer.ReadVarInt32();
+                return Unsafe.As<int, TEnum>(ref b);
             }
             else
             {
-                ulong value = buffer.ReadVarUInt64();
-                return EnumConverter.ToEnum<TEnum>(value);
+                long b = buffer.ReadVarInt64();
+                return Unsafe.As<long, TEnum>(ref b);
             }
         }
 
