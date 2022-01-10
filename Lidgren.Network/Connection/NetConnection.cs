@@ -396,9 +396,16 @@ namespace Lidgren.Network
                 chan = CreateSenderChannel(type);
 
             if (method != NetDeliveryMethod.Unreliable &&
-                method != NetDeliveryMethod.UnreliableSequenced &&
-                message.GetEncodedSize() > CurrentMTU)
-                Peer.ThrowOrLog("Reliable message too large! Fragmentation failure?");
+                method != NetDeliveryMethod.UnreliableSequenced)
+            {
+                int encodedSize = message.GetEncodedSize();
+                int currentMtu = CurrentMTU;
+                if (encodedSize > currentMtu)
+                {
+                    Peer.LogError(NetLogMessage.FromValues(NetLogCode.ReliableMessageTooLarge,
+                        message.View, value: encodedSize, maxValue: currentMtu));
+                }
+            }
 
             NetSendResult sendResult = chan.Enqueue(message);
             return (sendResult, chan);

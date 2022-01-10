@@ -67,5 +67,8 @@
         NATPunchSent,
         HostNATPunchSuccess,
         ClientNATPunchSuccess,
+        ReliableMessageTooLarge,
+        HailMessageTooLarge,
+        DisconnectedPeer,
     }
 }

@@ -23,6 +23,18 @@ namespace Lidgren.Network
 
         public NetMessageType MessageType => _messageType;
 
+        public NetMessageView View => new(
+            NetIncomingMessageType.Error,
+            MessageType,
+            _fragmentGroup != 0,
+            TimeSpan.Zero,
+            0,
+            null,
+            null,
+            this,
+            GetBuffer().AsSpan(0, ByteLength),
+            BitLength);
+
         public NetOutgoingMessage(ArrayPool<byte> storagePool) : base(storagePool)
         {
         }

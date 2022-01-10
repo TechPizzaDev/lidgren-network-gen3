@@ -302,19 +302,6 @@ namespace Lidgren.Network
         }
 
         /// <summary>
-        /// In DEBUG, throws an exception, in RELEASE logs an error message.
-        /// </summary>
-        internal void ThrowOrLog(string message)
-        {
-#if DEBUG
-            throw new LidgrenException(message);
-#else
-            throw new NotImplementedException();
-            //LogError(message);
-#endif
-        }
-
-        /// <summary>
         /// Disconnects all active connections and closes the socket.
         /// </summary>
         public void Shutdown(NetOutgoingMessage? reason = null)
