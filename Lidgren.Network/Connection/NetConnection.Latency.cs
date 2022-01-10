@@ -136,6 +136,15 @@ namespace Lidgren.Network
 
             // notify the application that average rtt changed
             LatencyUpdated?.Invoke(this, AverageRoundtripTime);
+
+            if (Peer.Configuration.IsMessageTypeEnabled(NetIncomingMessageType.ConnectionLatencyUpdated))
+            {
+                var updateMsg = Peer.CreateIncomingMessage(NetIncomingMessageType.ConnectionLatencyUpdated);
+                updateMsg.SenderConnection = this;
+                updateMsg.SenderEndPoint = RemoteEndPoint;
+                updateMsg.Write(rtt);
+                Peer.ReleaseMessage(updateMsg);
+            }
         }
     }
 }

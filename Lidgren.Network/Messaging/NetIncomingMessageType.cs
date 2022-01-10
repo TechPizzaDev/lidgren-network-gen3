@@ -4,13 +4,12 @@ namespace Lidgren.Network
 	/// <summary>
 	/// The type of a <see cref="NetIncomingMessage"/>.
 	/// </summary>
+	/// <remarks>
+	/// Library note: values are power-of-two, but they are not flags - 
+	/// it's a convenience for <see cref="NetPeerConfiguration"/>.
+	/// </remarks>
 	public enum NetIncomingMessageType
 	{
-		//
-		// library note: values are power-of-two, 
-		// but they are not flags - it's a convenience for NetPeerConfiguration.DisabledMessageTypes
-		//
-
 		/// <summary>
 		/// Error; this value should never appear.
 		/// </summary>
@@ -24,7 +23,7 @@ namespace Lidgren.Network
 		/// <summary>
 		/// Data sent using SendUnconnectedMessage.
 		/// </summary>
-		UnconnectedData = 1 << 1,		// Data					Based on data received
+		UnconnectedData = 1 << 1,		// Data (Based on data received)
 
 		/// <summary>
 		/// Connection approval is needed.
@@ -34,7 +33,7 @@ namespace Lidgren.Network
 		/// <summary>
 		/// Application data.
 		/// </summary>
-		Data = 1 << 3,					// Data					Based on data received
+		Data = 1 << 3,					// Data	(Based on data received)
 
 		/// <summary>
 		/// Receipt of delivery.
@@ -59,6 +58,11 @@ namespace Lidgren.Network
 		/// <summary>
 		/// Stream of application data is being transferred.
 		/// </summary>
-		DataStream = 1 << 8,		     // Data
+		DataStream = 1 << 8,           // Data
+
+		/// <summary>
+		/// A roundtrip was measured and <see cref="NetConnection.AverageRoundtripTime"/> was updated.
+		/// </summary>
+		ConnectionLatencyUpdated = 1 << 9, // Seconds as a TimeSpan
 	}
 }

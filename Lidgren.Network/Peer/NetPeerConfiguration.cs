@@ -75,6 +75,7 @@ namespace Lidgren.Network
             _disabledTypes =
                 NetIncomingMessageType.ConnectionApproval |
                 NetIncomingMessageType.UnconnectedData |
+                NetIncomingMessageType.ConnectionLatencyUpdated |
                 NetIncomingMessageType.NatIntroductionSuccess;
 
             _networkThreadName = "Lidgren Network Thread";
