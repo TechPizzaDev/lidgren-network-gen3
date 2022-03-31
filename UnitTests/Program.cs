@@ -68,7 +68,9 @@ namespace UnitTests
 
             MiscTests.Run();
 
-            NetStreamingMessageTest.Run();
+            //RawSocketTests.Run();
+
+            NetStreamingMessageTest.Run(args.Length > 0 ? args[0] : null);
 
             //NetStreamTests.Run();
 

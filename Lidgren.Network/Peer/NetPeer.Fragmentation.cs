@@ -179,7 +179,8 @@ namespace Lidgren.Network
                         var (result, channel) = SendChunk(chunk);
                         if (result == NetSendResult.Queued)
                         {
-                            await channel!.WaitForIdleAsync(millisecondsTimeout: 10000, cancellationToken);
+                            int freeSlots = await channel!.WaitForIdleAsync(millisecondsTimeout: 10000, cancellationToken)
+                                .ConfigureAwait(false);
                         }
                         else if (result != NetSendResult.Sent)
                         {
@@ -243,7 +244,7 @@ namespace Lidgren.Network
             {
                 var msgType = (NetStreamFragmentType)totalBits;
                 HandleStreamFragment(message, headerOffset, groupNum, msgType);
-                return false; // streams don't consume messages
+                return false; // streams don't forward messages
             }
 
             return HandleNormalFragment(

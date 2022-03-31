@@ -413,11 +413,12 @@ namespace Lidgren.Network
                 }
             }
 
-            if (Socket == null)
+            Socket? socket = Socket;
+            if (socket == null)
                 return;
 
             // wait up to 10 ms for data to arrive
-            if (!Socket.Poll(10000, SelectMode.SelectRead))
+            if (!socket.Poll(10000, SelectMode.SelectRead))
                 return;
 
             // update now
@@ -425,13 +426,16 @@ namespace Lidgren.Network
 
             byte[] buffer = _receiveBuffer;
 
-            while (Socket.Available > 0)
+            int available = socket.Available;
+            while (available > 0)
             {
                 int bytesReceived = 0;
                 try
                 {
-                    bytesReceived = Socket.ReceiveFrom(
+                    bytesReceived = socket.ReceiveFrom(
                         buffer, 0, buffer.Length, SocketFlags.None, ref _senderRemote);
+
+                    available -= bytesReceived;
                 }
                 catch (SocketException sx)
                 {

@@ -1,8 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.IO.Pipelines;
 using System.Net;
+using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using Lidgren.Network;
@@ -11,13 +13,13 @@ namespace UnitTests
 {
     public static class NetStreamingMessageTest
     {
-        public static void Run()
+        public static void Run(string? arg)
         {
             Console.WriteLine("Testing streaming messages");
 
             string appId = "NetStreamingMessages";
             int port = 20002;
-            int clientCount = 10;
+            int clientCount = 4;
 
             var serverThread = new Thread(() =>
             {
@@ -26,6 +28,7 @@ namespace UnitTests
                     AcceptIncomingConnections = true,
                     Port = port,
                     AutoExpandMTU = true,
+                    ReceiveBufferSize = 1024 * 1024
                 };
                 config.EnableMessageType(NetIncomingMessageType.ConnectionApproval);
                 var server = new NetServer(config);
@@ -34,10 +37,14 @@ namespace UnitTests
                 {
                     Console.WriteLine("Server " + level + ": " + message.Code);
 
-                    if (level > NetLogLevel.Debug)
+                    if (message.Code == NetLogCode.ExpandedMTU)
+                    {
+                        var connection = (NetConnection)message.EndPoint;
+                        Console.WriteLine("New MTU after expansion: " + connection.CurrentMTU);
+                    }
+
+                    if (level > NetLogLevel.Debug && message.Exception != null)
                         Console.WriteLine(message.Exception);
-                    else
-                        Console.WriteLine();
                 }
                 server.DebugMessage += Server_ErrorMessage;
                 server.WarningMessage += Server_ErrorMessage;
@@ -46,6 +53,8 @@ namespace UnitTests
 
                 Task.Run(() =>
                 {
+                    return;
+
                     while (server.Status == NetPeerStatus.Running)
                     {
                         Console.WriteLine("Server Incoming: " +
@@ -56,8 +65,12 @@ namespace UnitTests
                     }
                 });
 
+                long totalRead = 0;
+                long tmpRead = 0;
+
+                List<Task> tasks = new();
                 int count = clientCount;
-                while (count > 0 && server.TryReadMessage(60000 * 2, out var message))
+                while (count > 0 && server.TryReadMessage(10000, out var message))
                 {
                     switch (message.MessageType)
                     {
@@ -80,24 +93,35 @@ namespace UnitTests
                         case NetIncomingMessageType.DataStream:
                             if (message.SenderConnection!.TryDequeueDataStream(out PipeReader? reader))
                             {
-                                Task.Run(async () =>
+                                async Task ReadLoop()
                                 {
+                                    Console.WriteLine(DateTime.UtcNow.TimeOfDay.TotalMilliseconds.ToString("0.000") + "] CLIENT STARTING STREAM ON SERVER");
+
                                     Stream stream = reader.AsStream();
                                     byte[] buffer = new byte[1024 * 1024];
 
                                     //using (var fs = new FileStream("receivedfile", FileMode.Create))
+
                                     var fs = Stream.Null;
                                     {
                                         int read;
                                         while ((read = await stream.ReadAsync(buffer)) > 0)
                                         {
-                                            //Console.WriteLine("READ " + read + " FROM CLIENT STREAM");
-                                            fs.Write(buffer.AsSpan(0, read));
+                                            totalRead += read;
+                                            tmpRead += read;
+
+                                            if (tmpRead >= 1024 * 1024 * 4)
+                                            {
+                                                tmpRead = 0;
+                                                Console.WriteLine(DateTime.UtcNow.TimeOfDay.TotalMilliseconds.ToString("0.000") + "]  READ " + totalRead / 1024 + "kB FROM CLIENT STREAM");
+                                            }
+                                            //fs.Write(buffer.AsSpan(0, read));
                                         }
                                     }
 
-                                    Console.WriteLine("CLIENT STREAM COMPLETED ON SERVER");
-                                });
+                                    Console.WriteLine(DateTime.UtcNow.TimeOfDay.TotalMilliseconds.ToString("0.000") + "] CLIENT STREAM COMPLETED ON SERVER");
+                                }
+                                tasks.Add(ReadLoop());
                             }
                             break;
 
@@ -106,6 +130,8 @@ namespace UnitTests
                             break;
                     }
                 }
+
+                Task.WaitAll(tasks.ToArray());
 
                 List<NetConnection> connections = new();
                 server.GetConnections(connections);
@@ -142,10 +168,14 @@ namespace UnitTests
 
                         Console.WriteLine("Client " + level + ": " + message.Code);
 
-                        if (level > NetLogLevel.Debug)
+                        if (message.Code == NetLogCode.ExpandedMTU)
+                        {
+                            var connection = (NetConnection)message.EndPoint;
+                            Console.WriteLine("New MTU after expansion: " + connection.CurrentMTU);
+                        }
+
+                        if (level > NetLogLevel.Debug && message.Exception != null)
                             Console.WriteLine(message.Exception);
-                        else
-                            Console.WriteLine();
                     }
                     client.DebugMessage += Client_ErrorMessage;
                     client.WarningMessage += Client_ErrorMessage;
@@ -154,6 +184,8 @@ namespace UnitTests
 
                     Task.Run(() =>
                     {
+                        return;
+
                         while (client.ConnectionStatus != NetConnectionStatus.Connected)
                             Thread.Sleep(1);
 
@@ -200,7 +232,7 @@ namespace UnitTests
                             if (client.TryReadMessage(out var msg))
                             {
                                 if (msg.MessageType == NetIncomingMessageType.StatusChanged)
-                                    Console.WriteLine(msg.ReadEnum<NetConnectionStatus>() + ": " + msg.ReadString());
+                                    Console.WriteLine(msg.ReadEnum<NetConnectionStatus>());
                             }
                             return;
                         }
@@ -211,11 +243,11 @@ namespace UnitTests
                     {
                         try
                         {
-                            var fs = new FakeReadStream(1024 * 1024 * 10);
+                            var fs = new FakeReadStream(1024 * 1024 * 128);
                             PipeReader reader = PipeReader.Create(fs);
-                            await connection.StreamMessageAsync(reader, 0);
+                            var result = await connection.StreamMessageAsync(reader, 0);
 
-                            Console.WriteLine("FINISHED SENDING FILE from thread " + tt);
+                            Console.WriteLine(DateTime.UtcNow.TimeOfDay.TotalMilliseconds.ToString("0.000") + $"] {result} FILE from thread " + tt);
                         }
                         catch (Exception ex)
                         {
@@ -243,15 +275,23 @@ namespace UnitTests
                 });
             }
 
-            serverThread.Start();
-            for (int i = 0; i < clientThreads.Length; i++)
-                clientThreads[i].Start();
+            if (arg == null || arg == "server")
+                serverThread.Start();
 
-            serverThread.Join();
-            for (int i = 0; i < clientThreads.Length; i++)
-                clientThreads[i].Join();
+            if (arg == null || arg != "server")
+            {
+                for (int i = 0; i < clientThreads.Length; i++)
+                    clientThreads[i].Start();
+            }
 
-            Thread.Sleep(500);
+            if (arg == null || arg == "server")
+                serverThread.Join();
+
+            if (arg == null || arg != "server")
+            {
+                for (int i = 0; i < clientThreads.Length; i++)
+                    clientThreads[i].Join();
+            }
         }
     }
 }

@@ -172,14 +172,13 @@ namespace Lidgren.Network
             try
             {
                 if (recipientList.Count == 0)
-                {
                     return NetSendResult.NoRecipients;
-                }
                 
                 if (recipientList.Count > 1)
                     throw new NotImplementedException("The method can only send to one recipient at the time.");
 
-                return await SendFragmentedMessageAsync(message, recipientList[0], sequenceChannel, cancellationToken);
+                return await SendFragmentedMessageAsync(message, recipientList[0], sequenceChannel, cancellationToken)
+                    .ConfigureAwait(false);
             }
             finally
             {

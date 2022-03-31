@@ -118,7 +118,7 @@ namespace Lidgren.Network
         internal NetSocketResult ActuallySendPacket(byte[] data, int byteCount, IPEndPoint target)
         {
             Socket? socket = Socket;
-            Debug.Assert(socket != null);
+            Debug.Assert(socket != null, "No socket bound.");
 
             bool broadcasting = false;
             try
@@ -192,14 +192,14 @@ namespace Lidgren.Network
 
         internal bool SendMTUPacket(int byteCount, IPEndPoint target)
         {
-            if (Socket == null)
-                throw new InvalidOperationException("No socket bound.");
+            Socket? socket = Socket;
+            Debug.Assert(socket != null, "No socket bound.");
 
             try
             {
-                Socket.DontFragment = true;
+                socket.DontFragment = true;
 
-                int bytesSent = Socket.SendTo(_sendBuffer, 0, byteCount, SocketFlags.None, target);
+                int bytesSent = socket.SendTo(_sendBuffer, 0, byteCount, SocketFlags.None, target);
                 if (byteCount != bytesSent)
                 {
                     LogWarning(NetLogMessage.FromValues(NetLogCode.FullSendFailure,
@@ -235,7 +235,7 @@ namespace Lidgren.Network
             }
             finally
             {
-                Socket.DontFragment = false;
+                socket.DontFragment = false;
             }
             return true;
         }

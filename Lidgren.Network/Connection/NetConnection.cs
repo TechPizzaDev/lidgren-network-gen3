@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.IO;
 using System.IO.Pipelines;
 using System.Net;
 using System.Threading.Tasks;
@@ -363,15 +364,16 @@ namespace Lidgren.Network
         /// Stream a message to this remote connection.
         /// </summary>
         /// <param name="message">The message to stream.</param>
-        /// <param name="method">How to deliver the message</param>
         /// <param name="sequenceChannel">Sequence channel within the delivery method</param>
-        public async ValueTask<NetSendResult> StreamMessageAsync(PipeReader message, int sequenceChannel)
+        public ValueTask<NetSendResult> StreamMessageAsync(PipeReader message, int sequenceChannel)
         {
+            // This method is not async as Peer.StreamMessageAsync() captures recipients-
+            // This recipient list does not need to persist.
             List<NetConnection> recipientList = NetConnectionListPool.Rent(1);
             try
             {
                 recipientList.Add(this);
-                return await Peer.StreamMessageAsync(message, recipientList, sequenceChannel);
+                return Peer.StreamMessageAsync(message, recipientList, sequenceChannel);
             }
             finally
             {
