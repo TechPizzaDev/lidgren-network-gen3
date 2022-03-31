@@ -72,8 +72,10 @@ namespace Lidgren.Network
             if (_incomingMessagePool == null)
                 return;
 
+#if DEBUG_POOLING
             LidgrenException.Assert(
                 !_incomingMessagePool.Contains(message), "Recyling already recycled message! Thread race?");
+#endif
 
             message.Reset();
             message.TrimExcess();
@@ -98,8 +100,10 @@ namespace Lidgren.Network
                 if (message == null)
                     continue;
 
+#if DEBUG_POOLING
                 LidgrenException.Assert(
                     !_incomingMessagePool.Contains(message), "Recyling already recycled message! Thread race?");
+#endif
 
                 message.Reset();
                 message.TrimExcess();
@@ -119,8 +123,10 @@ namespace Lidgren.Network
             if (_outgoingMessagePool == null)
                 return;
 
+#if DEBUG_POOLING
             LidgrenException.Assert(
                 !_outgoingMessagePool.Contains(message), "Recyling already recycled message! Thread race?");
+#endif
 
             _outgoingMessagePool.Enqueue(message);
 
