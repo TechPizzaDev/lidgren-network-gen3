@@ -214,7 +214,7 @@ namespace Lidgren.Network
         {
             if (LocalHailMessage == null)
                 return;
-
+            LocalHailMessage.BitPosition = 0;
             int bitsToAppend = LocalHailMessage.BitLength - LocalHailMessage.BitPosition;
             if (bitsToAppend > 0)
             {
