@@ -35,39 +35,40 @@ namespace Lidgren.Network
             NetDeliveryMethod method, int sequenceChannel,
             string? methodParamName, string? channelParamName)
         {
-            if (sequenceChannel < 0)
-                throw new ArgumentOutOfRangeException(channelParamName, sequenceChannel, null);
+            ArgumentOutOfRangeException.ThrowIfLessThan(sequenceChannel, 0, channelParamName);
 
             switch (method)
             {
                 case NetDeliveryMethod.Unreliable:
-                    if (sequenceChannel >= UnreliableChannels)
-                        throw new ArgumentOutOfRangeException(channelParamName, sequenceChannel, null);
+                    ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(
+                        sequenceChannel, UnreliableChannels, channelParamName);
                     break;
 
                 case NetDeliveryMethod.UnreliableSequenced:
-                    if (sequenceChannel >= UnreliableSequencedChannels)
-                        throw new ArgumentOutOfRangeException(channelParamName, sequenceChannel, null);
+                    ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(
+                        sequenceChannel, UnreliableSequencedChannels, channelParamName);
                     break;
 
                 case NetDeliveryMethod.ReliableUnordered:
-                    if (sequenceChannel >= ReliableUnorderedChannels)
-                        throw new ArgumentOutOfRangeException(channelParamName, sequenceChannel, null);
+                    ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(
+                        sequenceChannel, ReliableUnorderedChannels, channelParamName);
                     break;
 
                 case NetDeliveryMethod.ReliableSequenced:
-                    if (sequenceChannel >= ReliableSequencedChannels)
-                        throw new ArgumentOutOfRangeException(channelParamName, sequenceChannel, null);
+                    ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(
+                        sequenceChannel, ReliableSequencedChannels, channelParamName);
                     break;
 
                 case NetDeliveryMethod.ReliableOrdered:
-                    if (sequenceChannel >= ReliableOrderedChannels)
-                        throw new ArgumentOutOfRangeException(channelParamName, sequenceChannel, null);
+                    ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(
+                        sequenceChannel, ReliableOrderedChannels, channelParamName);
                     break;
 
                 default:
                 case NetDeliveryMethod.Unknown:
-                    throw new ArgumentOutOfRangeException(methodParamName, method, null);
+                    void Throw() => throw new ArgumentOutOfRangeException(methodParamName, method, null);
+                    Throw();
+                    break;
             }
         }
     }
