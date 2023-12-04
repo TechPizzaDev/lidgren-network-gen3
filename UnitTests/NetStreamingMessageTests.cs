@@ -35,12 +35,12 @@ namespace UnitTests
 
                 void Server_ErrorMessage(NetPeer sender, NetLogLevel level, in NetLogMessage message)
                 {
-                    Console.WriteLine("Server " + level + ": " + message.Code);
+                    Console.WriteLine($"Server {level}: {message.Code}");
 
                     if (message.Code == NetLogCode.ExpandedMTU)
                     {
-                        var connection = (NetConnection)message.EndPoint;
-                        Console.WriteLine("New MTU after expansion: " + connection.CurrentMTU);
+                        var connection = (NetConnection?)message.EndPoint;
+                        Console.WriteLine($"New MTU after expansion: {connection?.CurrentMTU}");
                     }
 
                     if (level > NetLogLevel.Debug && message.Exception != null)
@@ -57,9 +57,8 @@ namespace UnitTests
 
                     while (server.Status == NetPeerStatus.Running)
                     {
-                        Console.WriteLine("Server Incoming: " +
-                            server.Statistics.IncomingRecycled + " / " +
-                            server.Statistics.IncomingAllocated);
+                        Console.WriteLine(
+                            $"Server Incoming: {server.Statistics.IncomingRecycled} / {server.Statistics.IncomingAllocated}");
 
                         Thread.Sleep(500);
                     }
@@ -79,13 +78,13 @@ namespace UnitTests
                             break;
 
                         case NetIncomingMessageType.StatusChanged:
-                            Console.WriteLine("Server Status: " + message.ReadEnum<NetConnectionStatus>());
+                            Console.WriteLine($"Server Status: {message.ReadEnum<NetConnectionStatus>()}");
                             break;
 
                         case NetIncomingMessageType.Data:
-                            Console.WriteLine("Server Data: " + message.ByteLength + " bytes");
+                            Console.WriteLine($"Server Data: {message.ByteLength} bytes");
 
-                            var resp = server.CreateMessage("received " + count);
+                            var resp = server.CreateMessage($"received {count}");
                             message.SenderConnection?.SendMessage(resp, NetDeliveryMethod.ReliableOrdered, 0);
                             count--;
                             break;
@@ -95,7 +94,7 @@ namespace UnitTests
                             {
                                 async Task ReadLoop()
                                 {
-                                    Console.WriteLine(DateTime.UtcNow.TimeOfDay.TotalMilliseconds.ToString("0.000") + "] CLIENT STARTING STREAM ON SERVER");
+                                    Console.WriteLine($"{DateTime.UtcNow.TimeOfDay.TotalMilliseconds:0.000}] CLIENT STARTING STREAM ON SERVER");
 
                                     Stream stream = reader.AsStream();
                                     byte[] buffer = new byte[1024 * 1024];
@@ -113,20 +112,20 @@ namespace UnitTests
                                             if (tmpRead >= 1024 * 1024 * 4)
                                             {
                                                 tmpRead = 0;
-                                                Console.WriteLine(DateTime.UtcNow.TimeOfDay.TotalMilliseconds.ToString("0.000") + "]  READ " + totalRead / 1024 + "kB FROM CLIENT STREAM");
+                                                Console.WriteLine($"{DateTime.UtcNow.TimeOfDay.TotalMilliseconds:0.000}]  READ {totalRead / 1024}kB FROM CLIENT STREAM");
                                             }
                                             //fs.Write(buffer.AsSpan(0, read));
                                         }
                                     }
 
-                                    Console.WriteLine(DateTime.UtcNow.TimeOfDay.TotalMilliseconds.ToString("0.000") + "] CLIENT STREAM COMPLETED ON SERVER");
+                                    Console.WriteLine($"{DateTime.UtcNow.TimeOfDay.TotalMilliseconds:0.000}] CLIENT STREAM COMPLETED ON SERVER");
                                 }
                                 tasks.Add(ReadLoop());
                             }
                             break;
 
                         default:
-                            Console.WriteLine("Server " + message.MessageType);
+                            Console.WriteLine($"Server {message.MessageType}");
                             break;
                     }
                 }
@@ -166,12 +165,12 @@ namespace UnitTests
                         if (message.Code == NetLogCode.SocketWouldBlock)
                             return;
 
-                        Console.WriteLine("Client " + level + ": " + message.Code);
+                        Console.WriteLine($"Client {level}: {message.Code}");
 
                         if (message.Code == NetLogCode.ExpandedMTU)
                         {
-                            var connection = (NetConnection)message.EndPoint;
-                            Console.WriteLine("New MTU after expansion: " + connection.CurrentMTU);
+                            var connection = (NetConnection?)message.EndPoint;
+                            Console.WriteLine($"New MTU after expansion: {connection?.CurrentMTU}");
                         }
 
                         if (level > NetLogLevel.Debug && message.Exception != null)
@@ -191,9 +190,8 @@ namespace UnitTests
 
                         while (client.ConnectionStatus == NetConnectionStatus.Connected)
                         {
-                            Console.WriteLine("Client " + tt + " Outgoing: " +
-                                client.Statistics.OutgoingRecycled + " / " +
-                                client.Statistics.OutgoingAllocated);
+                            Console.WriteLine(
+                                $"Client {tt} Outgoing: {client.Statistics.OutgoingRecycled} / {client.Statistics.OutgoingAllocated}");
 
                             Thread.Sleep(500);
                         }
@@ -247,7 +245,7 @@ namespace UnitTests
                             PipeReader reader = PipeReader.Create(fs);
                             var result = await connection.StreamMessageAsync(reader, 0);
 
-                            Console.WriteLine(DateTime.UtcNow.TimeOfDay.TotalMilliseconds.ToString("0.000") + $"] {result} FILE from thread " + tt);
+                            Console.WriteLine($"{DateTime.UtcNow.TimeOfDay.TotalMilliseconds:0.000}] {result} FILE from thread {tt}");
                         }
                         catch (Exception ex)
                         {
@@ -260,13 +258,13 @@ namespace UnitTests
                         switch (message.MessageType)
                         {
                             case NetIncomingMessageType.Data:
-                                Console.WriteLine("Client Data: " + message.ReadString());
+                                Console.WriteLine($"Client Data: {message.ReadString()}");
                                 client.Shutdown();
                                 stop = true;
                                 break;
 
                             default:
-                                Console.WriteLine("Client " + message.MessageType);
+                                Console.WriteLine($"Client {message.MessageType}");
                                 break;
                         }
 
