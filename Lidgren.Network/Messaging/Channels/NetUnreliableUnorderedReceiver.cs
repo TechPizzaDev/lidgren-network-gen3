@@ -10,10 +10,12 @@ namespace Lidgren.Network
 
 		public override void ReceiveMessage(in NetMessageView message)
 		{
-			// ack no matter what
-			Connection.QueueAck(message.BaseMessageType, message.SequenceNumber);
+			NetConnection connection = Connection;
 
-			Peer.ReleaseMessage(message);
+            // ack no matter what
+            connection.QueueAck(message.BaseMessageType, message.SequenceNumber);
+
+            connection.Peer.ReleaseMessage(message);
 		}
 	}
 }

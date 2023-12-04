@@ -25,11 +25,13 @@ namespace Lidgren.Network
 
         public override void ReceiveMessage(in NetMessageView message)
         {
+            NetConnection connection = Connection;
+            NetPeer peer = connection.Peer;
             int windowSize = WindowSize;
             int relate = NetUtility.RelativeSequenceNumber(message.SequenceNumber, _windowStart);
 
             // ack no matter what
-            Connection.QueueAck(message.BaseMessageType, message.SequenceNumber);
+            connection.QueueAck(message.BaseMessageType, message.SequenceNumber);
 
             if (relate == 0)
             {
@@ -38,7 +40,7 @@ namespace Lidgren.Network
                 // excellent, right on time
 
                 AdvanceWindow();
-                Peer.ReleaseMessage(message);
+                peer.ReleaseMessage(message);
 
                 // release withheld messages
                 int nextSeqNr = NetUtility.PowOf2Mod(message.SequenceNumber + 1, NetConstants.SequenceNumbers);
@@ -54,7 +56,7 @@ namespace Lidgren.Network
 
             if (relate < 0)
             {
-                Peer.LogVerbose(NetLogMessage.FromValues(NetLogCode.DuplicateMessage,
+                peer.LogVerbose(NetLogMessage.FromValues(NetLogCode.DuplicateMessage,
                     message, value: _windowStart, maxValue: windowSize));
                 return;
             }
@@ -62,14 +64,14 @@ namespace Lidgren.Network
             // relate > 0 = early message
             if (relate > windowSize)
             {
-                Peer.LogVerbose(NetLogMessage.FromValues(NetLogCode.TooEarlyMessage,
+                peer.LogVerbose(NetLogMessage.FromValues(NetLogCode.TooEarlyMessage,
                     message, value: _windowStart, maxValue: windowSize));
                 return;
             }
 
             _earlyReceived.Set(NetUtility.PowOf2Mod(message.SequenceNumber, windowSize), true);
 
-            Peer.ReleaseMessage(message);
+            peer.ReleaseMessage(message);
         }
     }
 }

@@ -11,18 +11,19 @@ namespace Lidgren.Network
 		}
 
 		public override void ReceiveMessage(in NetMessageView message)
-		{
-			int nr = message.SequenceNumber;
+        {
+            NetConnection connection = Connection;
+            int nr = message.SequenceNumber;
 
 			// ack no matter what
-			Connection.QueueAck(message.BaseMessageType, nr);
+			connection.QueueAck(message.BaseMessageType, nr);
 
 			int relate = NetUtility.RelativeSequenceNumber(nr, _lastReceivedSequenceNumber + 1);
 			if (relate < 0)
 				return; // drop if late
 
 			_lastReceivedSequenceNumber = nr;
-			Peer.ReleaseMessage(message);
+            connection.Peer.ReleaseMessage(message);
 		}
 	}
 }

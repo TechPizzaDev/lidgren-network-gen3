@@ -29,11 +29,13 @@ namespace Lidgren.Network
 
         public override void ReceiveMessage(in NetMessageView message)
         {
+            NetConnection connection = Connection;
+            NetPeer peer = connection.Peer;
             int windowSize = WindowSize;
             int relate = NetUtility.RelativeSequenceNumber(message.SequenceNumber, _windowStart);
 
             // ack no matter what
-            Connection.QueueAck(message.BaseMessageType, message.SequenceNumber);
+            connection.QueueAck(message.BaseMessageType, message.SequenceNumber);
 
             if (relate == 0)
             {
@@ -45,7 +47,7 @@ namespace Lidgren.Network
                 nextSeqNr = NetUtility.PowOf2Mod(nextSeqNr, windowSize);
 
                 AdvanceWindow();
-                Peer.ReleaseMessage(message);
+                peer.ReleaseMessage(message);
 
                 // release withheld messages
                 while (_earlyReceived[nextSeqNr])
@@ -60,16 +62,16 @@ namespace Lidgren.Network
                     nextSeqNr++;
                     nextSeqNr = NetUtility.PowOf2Mod(nextSeqNr, windowSize);
 
-                    Peer.LogVerbose(NetLogMessage.FromValues(NetLogCode.WithheldMessage,
+                    peer.LogVerbose(NetLogMessage.FromValues(NetLogCode.WithheldMessage,
                         withheldMessage.View, value: _windowStart, maxValue: windowSize));
-                    Peer.ReleaseMessage(withheldMessage);
+                    peer.ReleaseMessage(withheldMessage);
                 }
                 return;
             }
 
             if (relate < 0)
             {
-                Peer.LogVerbose(NetLogMessage.FromValues(NetLogCode.DuplicateMessage,
+                peer.LogVerbose(NetLogMessage.FromValues(NetLogCode.DuplicateMessage,
                     message, value: _windowStart, maxValue: windowSize));
                 return;
             }
@@ -77,7 +79,7 @@ namespace Lidgren.Network
             // relate > 0 = early message
             if (relate > windowSize)
             {
-                Peer.LogVerbose(NetLogMessage.FromValues(NetLogCode.TooEarlyMessage,
+                peer.LogVerbose(NetLogMessage.FromValues(NetLogCode.TooEarlyMessage,
                     message, value: _windowStart, maxValue: windowSize));
                 return;
             }
@@ -89,11 +91,11 @@ namespace Lidgren.Network
             if (messageSlot != null)
             {
                 // the amount of messages may overflow within a given window so just dump existing message
-                Peer.Recycle(messageSlot);
+                peer.Recycle(messageSlot);
             }
-            messageSlot = message.ToIncomingMessage(Peer);
+            messageSlot = message.ToIncomingMessage(peer);
 
-            Peer.LogVerbose(NetLogMessage.FromValues(NetLogCode.EarlyMessage,
+            peer.LogVerbose(NetLogMessage.FromValues(NetLogCode.EarlyMessage,
                 message, value: _windowStart, maxValue: windowSize));
         }
     }
