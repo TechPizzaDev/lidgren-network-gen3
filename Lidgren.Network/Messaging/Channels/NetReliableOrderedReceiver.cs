@@ -4,30 +4,32 @@ namespace Lidgren.Network
 {
     internal sealed class NetReliableOrderedReceiver : NetReceiverChannel
     {
-        private int _windowStart;
-        private int _windowSize;
         private NetBitArray _earlyReceived;
 
         public NetIncomingMessage?[] WithheldMessages { get; private set; }
 
         public NetReliableOrderedReceiver(NetConnection connection, int windowSize)
-            : base(connection)
+            : base(connection, windowSize)
         {
-            LidgrenException.AssertIsPowerOfTwo((ulong)windowSize, nameof(windowSize));
-
-            _windowSize = windowSize;
-            _earlyReceived = new NetBitArray(windowSize);
-            WithheldMessages = new NetIncomingMessage[windowSize];
+            WithheldMessages = Array.Empty<NetIncomingMessage>();
         }
 
         private void AdvanceWindow()
         {
-            _earlyReceived.Set(NetUtility.PowOf2Mod(_windowStart, _windowSize), false);
+            _earlyReceived.Set(NetUtility.PowOf2Mod(_windowStart, WindowSize), false);
             _windowStart = NetUtility.PowOf2Mod(_windowStart + 1, NetConstants.SequenceNumbers);
+        }
+
+        protected override void OnWindowSizeChanged()
+        {
+            _earlyReceived = new NetBitArray(WindowSize);
+            WithheldMessages = new NetIncomingMessage[WindowSize];
+            base.OnWindowSizeChanged();
         }
 
         public override void ReceiveMessage(in NetMessageView message)
         {
+            int windowSize = WindowSize;
             int relate = NetUtility.RelativeSequenceNumber(message.SequenceNumber, _windowStart);
 
             // ack no matter what
@@ -40,7 +42,7 @@ namespace Lidgren.Network
                 // excellent, right on time
 
                 int nextSeqNr = NetUtility.PowOf2Mod(message.SequenceNumber + 1, NetConstants.SequenceNumbers);
-                nextSeqNr = NetUtility.PowOf2Mod(nextSeqNr, _windowSize);
+                nextSeqNr = NetUtility.PowOf2Mod(nextSeqNr, windowSize);
 
                 AdvanceWindow();
                 Peer.ReleaseMessage(message);
@@ -56,10 +58,10 @@ namespace Lidgren.Network
 
                     AdvanceWindow();
                     nextSeqNr++;
-                    nextSeqNr = NetUtility.PowOf2Mod(nextSeqNr, _windowSize);
+                    nextSeqNr = NetUtility.PowOf2Mod(nextSeqNr, windowSize);
 
                     Peer.LogVerbose(NetLogMessage.FromValues(NetLogCode.WithheldMessage,
-                        message, value: _windowStart, maxValue: _windowSize));
+                        withheldMessage.View, value: _windowStart, maxValue: windowSize));
                     Peer.ReleaseMessage(withheldMessage);
                 }
                 return;
@@ -68,19 +70,19 @@ namespace Lidgren.Network
             if (relate < 0)
             {
                 Peer.LogVerbose(NetLogMessage.FromValues(NetLogCode.DuplicateMessage,
-                    message, value: _windowStart, maxValue: _windowSize));
+                    message, value: _windowStart, maxValue: windowSize));
                 return;
             }
 
             // relate > 0 = early message
-            if (relate > _windowSize)
+            if (relate > windowSize)
             {
                 Peer.LogVerbose(NetLogMessage.FromValues(NetLogCode.TooEarlyMessage,
-                    message, value: _windowStart, maxValue: _windowSize));
+                    message, value: _windowStart, maxValue: windowSize));
                 return;
             }
 
-            int messageIndex = NetUtility.PowOf2Mod(message.SequenceNumber, _windowSize);
+            int messageIndex = NetUtility.PowOf2Mod(message.SequenceNumber, windowSize);
             _earlyReceived.Set(messageIndex, true);
 
             ref NetIncomingMessage? messageSlot = ref WithheldMessages[messageIndex];
@@ -92,7 +94,7 @@ namespace Lidgren.Network
             messageSlot = message.ToIncomingMessage(Peer);
 
             Peer.LogVerbose(NetLogMessage.FromValues(NetLogCode.EarlyMessage,
-                message, value: _windowStart, maxValue: _windowSize));
+                message, value: _windowStart, maxValue: windowSize));
         }
     }
 }

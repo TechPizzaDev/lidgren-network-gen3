@@ -1,17 +1,16 @@
-﻿using System;
-
+﻿
 namespace Lidgren.Network
 {
-	internal abstract class NetReceiverChannel
-	{
-		public NetConnection Connection { get; }
-		public NetPeer Peer => Connection.Peer;
+    internal abstract class NetReceiverChannel : NetChannel
+    {
+        protected NetReceiverChannel(NetConnection connection, int windowSize) : base(connection, windowSize)
+        {
+        }
 
-		public NetReceiverChannel(NetConnection connection)
-		{
-			Connection = connection ?? throw new ArgumentNullException(nameof(connection));
-		}
+        protected override void OnWindowSizeChanged()
+        {
+        }
 
-		public abstract void ReceiveMessage(in NetMessageView message);
-	}
+        public abstract void ReceiveMessage(in NetMessageView message);
+    }
 }

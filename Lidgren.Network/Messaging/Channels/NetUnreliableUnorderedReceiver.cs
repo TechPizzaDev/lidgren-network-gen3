@@ -4,7 +4,7 @@ namespace Lidgren.Network
 	internal sealed class NetUnreliableUnorderedReceiver : NetReceiverChannel
 	{
 		public NetUnreliableUnorderedReceiver(NetConnection connection)
-			: base(connection)
+			: base(connection, 1)
 		{
 		}
 

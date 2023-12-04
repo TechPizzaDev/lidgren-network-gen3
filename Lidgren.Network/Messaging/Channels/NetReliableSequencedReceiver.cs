@@ -3,13 +3,9 @@ namespace Lidgren.Network
 {
 	internal sealed class NetReliableSequencedReceiver : NetReceiverChannel
 	{
-		private int _windowStart;
-		private int _windowSize;
-
 		public NetReliableSequencedReceiver(NetConnection connection, int windowSize)
-			: base(connection)
+			: base(connection, windowSize)
 		{
-			_windowSize = windowSize;
 		}
 
 		private void AdvanceWindow()
@@ -19,7 +15,8 @@ namespace Lidgren.Network
 
 		public override void ReceiveMessage(in NetMessageView message)
 		{
-			int nr = message.SequenceNumber;
+			int windowSize = WindowSize;
+            int nr = message.SequenceNumber;
 
 			int relate = NetUtility.RelativeSequenceNumber(nr, _windowStart);
 
@@ -40,16 +37,16 @@ namespace Lidgren.Network
 			if (relate < 0)
 			{
 				Peer.LogVerbose(NetLogMessage.FromValues(NetLogCode.DuplicateOrLateMessage,
-					message, value: _windowStart, maxValue: _windowSize));
+					message, value: _windowStart, maxValue: windowSize));
 				return;
 			}
 
 			// relate > 0 = early message
-			if (relate > _windowSize)
+			if (relate > windowSize)
 			{
 				// too early message!
 				Peer.LogVerbose(NetLogMessage.FromValues(NetLogCode.TooEarlyMessage,
-					message, value: _windowStart, maxValue: _windowSize));
+					message, value: _windowStart, maxValue: windowSize));
 				return;
 			}
 

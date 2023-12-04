@@ -8,25 +8,11 @@ namespace Lidgren.Network
     /// </summary>
     internal sealed class NetUnreliableSenderChannel : NetSenderChannel
     {
-        private NetConnection _connection;
-        private int _windowStart;
-        private int _windowSize;
-        private int _sendStart;
         private bool _doFlowControl;
-        private NetBitArray _receivedAcks;
 
-        public override int WindowSize => _windowSize;
-
-        public NetUnreliableSenderChannel(NetConnection connection, int windowSize, NetDeliveryMethod method)
+        public NetUnreliableSenderChannel(NetConnection connection, int windowSize, NetDeliveryMethod method) : 
+            base(connection, windowSize)
         {
-            LidgrenException.AssertIsPowerOfTwo((ulong)windowSize, nameof(windowSize));
-
-            _connection = connection;
-            _windowSize = windowSize;
-            _windowStart = 0;
-            _sendStart = 0;
-            _receivedAcks = new NetBitArray(NetConstants.SequenceNumbers);
-
             _doFlowControl = true;
             if (method == NetDeliveryMethod.Unreliable &&
                 connection.Peer.Configuration.SuppressUnreliableUnorderedAcks)
@@ -38,40 +24,34 @@ namespace Lidgren.Network
             if (!_doFlowControl)
                 return int.MaxValue;
 
-            int value = _windowSize - NetUtility.PowOf2Mod(
+            int windowSize = WindowSize;
+            int value = windowSize - NetUtility.PowOf2Mod(
                 _sendStart + NetConstants.SequenceNumbers - _windowStart,
-                _windowSize);
+                windowSize);
 
-            LidgrenException.Assert(value >= 0 && value <= _windowSize);
+            LidgrenException.Assert(value >= 0 && value <= windowSize);
             return value;
-        }
-
-        public override void Reset()
-        {
-            QueuedSends.Clear();
-            _receivedAcks.Clear();
-            _windowStart = 0;
-            _sendStart = 0;
         }
 
         public override NetSendResult Enqueue(NetOutgoingMessage message)
         {
+            NetConnection connection = Connection;
             int queueLen = QueuedSends.Count + 1;
             int left = GetAllowedSends();
 
             if (queueLen > left ||
-                (message.ByteLength > _connection.CurrentMTU &&
-                _connection._peerConfiguration.UnreliableSizeBehaviour == NetUnreliableSizeBehaviour.DropAboveMTU))
+                (message.ByteLength > connection.CurrentMTU &&
+                connection._peerConfiguration.UnreliableSizeBehaviour == NetUnreliableSizeBehaviour.DropAboveMTU))
             {
-                _connection.Peer.Recycle(message);
+                connection.Peer.Recycle(message);
                 return NetSendResult.Dropped;
             }
 
             if (message.BitLength >= ushort.MaxValue &&
-                _connection._peerConfiguration.UnreliableSizeBehaviour == NetUnreliableSizeBehaviour.IgnoreMTU)
+                connection._peerConfiguration.UnreliableSizeBehaviour == NetUnreliableSizeBehaviour.IgnoreMTU)
             {
-                _connection.Peer.LogError(NetLogMessage.FromValues(NetLogCode.MessageSizeExceeded,
-                    endPoint: _connection,
+                connection.Peer.LogError(NetLogMessage.FromValues(NetLogCode.MessageSizeExceeded,
+                    endPoint: connection,
                     value: message.BitLength,
                     maxValue: ushort.MaxValue));
 
@@ -103,17 +83,18 @@ namespace Lidgren.Network
 
         private NetSocketResult ExecuteSend(NetOutgoingMessage message)
         {
-            _connection.Peer.AssertIsOnLibraryThread();
+            NetConnection connection = Connection;
+            connection.Peer.AssertIsOnLibraryThread();
 
             int seqNr = _sendStart;
-            var sendResult = _connection.QueueSendMessage(message, seqNr);
+            var sendResult = connection.QueueSendMessage(message, seqNr);
             if (sendResult.Success)
             {
                 _sendStart = NetUtility.PowOf2Mod(seqNr + 1, NetConstants.SequenceNumbers);
 
                 Interlocked.Decrement(ref message._recyclingCount);
                 if (message._recyclingCount <= 0)
-                    _connection.Peer.Recycle(message);
+                    connection.Peer.Recycle(message);
             }
             return sendResult;
         }
@@ -125,7 +106,7 @@ namespace Lidgren.Network
             if (!_doFlowControl)
             {
                 // we have no use for acks on this channel since we don't respect the window anyway
-                _connection.Peer.LogWarning(new NetLogMessage(NetLogCode.SuppressedUnreliableAck, endPoint: _connection));
+                Connection.Peer.LogWarning(new NetLogMessage(NetLogCode.SuppressedUnreliableAck, endPoint: Connection));
                 return new NetSocketResult(true, false);
             }
 

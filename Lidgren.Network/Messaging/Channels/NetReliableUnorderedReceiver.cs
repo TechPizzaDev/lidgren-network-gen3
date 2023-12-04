@@ -3,27 +3,29 @@ namespace Lidgren.Network
 {
     internal sealed class NetReliableUnorderedReceiver : NetReceiverChannel
     {
-        private int _windowStart;
-        private int _windowSize;
         private NetBitArray _earlyReceived;
 
         public NetReliableUnorderedReceiver(NetConnection connection, int windowSize)
-            : base(connection)
+            : base(connection, windowSize)
         {
-            LidgrenException.AssertIsPowerOfTwo((ulong)windowSize, nameof(windowSize));
+        }
 
-            _windowSize = windowSize;
-            _earlyReceived = new NetBitArray(windowSize);
+        protected override void OnWindowSizeChanged()
+        {
+            _earlyReceived = new NetBitArray(WindowSize);
+
+            base.OnWindowSizeChanged();
         }
 
         private void AdvanceWindow()
         {
-            _earlyReceived.Set(NetUtility.PowOf2Mod(_windowStart, _windowSize), false);
+            _earlyReceived.Set(NetUtility.PowOf2Mod(_windowStart, WindowSize), false);
             _windowStart = NetUtility.PowOf2Mod(_windowStart + 1, NetConstants.SequenceNumbers);
         }
 
         public override void ReceiveMessage(in NetMessageView message)
         {
+            int windowSize = WindowSize;
             int relate = NetUtility.RelativeSequenceNumber(message.SequenceNumber, _windowStart);
 
             // ack no matter what
@@ -41,7 +43,7 @@ namespace Lidgren.Network
                 // release withheld messages
                 int nextSeqNr = NetUtility.PowOf2Mod(message.SequenceNumber + 1, NetConstants.SequenceNumbers);
 
-                while (_earlyReceived[NetUtility.PowOf2Mod(nextSeqNr, _windowSize)])
+                while (_earlyReceived[NetUtility.PowOf2Mod(nextSeqNr, windowSize)])
                 {
                     AdvanceWindow();
                     nextSeqNr++;
@@ -53,19 +55,19 @@ namespace Lidgren.Network
             if (relate < 0)
             {
                 Peer.LogVerbose(NetLogMessage.FromValues(NetLogCode.DuplicateMessage,
-                    message, value: _windowStart, maxValue: _windowSize));
+                    message, value: _windowStart, maxValue: windowSize));
                 return;
             }
 
             // relate > 0 = early message
-            if (relate > _windowSize)
+            if (relate > windowSize)
             {
                 Peer.LogVerbose(NetLogMessage.FromValues(NetLogCode.TooEarlyMessage,
-                    message, value: _windowStart, maxValue: _windowSize));
+                    message, value: _windowStart, maxValue: windowSize));
                 return;
             }
 
-            _earlyReceived.Set(NetUtility.PowOf2Mod(message.SequenceNumber, _windowSize), true);
+            _earlyReceived.Set(NetUtility.PowOf2Mod(message.SequenceNumber, windowSize), true);
 
             Peer.ReleaseMessage(message);
         }

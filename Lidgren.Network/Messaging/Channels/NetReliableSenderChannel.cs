@@ -8,48 +8,33 @@ namespace Lidgren.Network
     /// </summary>
     internal sealed class NetReliableSenderChannel : NetSenderChannel
     {
-        private NetConnection _connection;
-        private int _windowStart;
-        private int _windowSize;
-        private int _sendStart;
-        private NetBitArray _receivedAcks;
-
         public NetStoredReliableMessage[] StoredMessages { get; }
 
         public TimeSpan ResendDelay { get; set; }
-        public override int WindowSize => _windowSize;
 
-        public NetReliableSenderChannel(NetConnection connection, int windowSize)
+        public NetReliableSenderChannel(NetConnection connection, int windowSize) : base(connection, windowSize)
         {
-            LidgrenException.AssertIsPowerOfTwo((ulong)windowSize, nameof(windowSize));
-
-            _connection = connection;
-            _windowSize = windowSize;
-            _windowStart = 0;
-            _sendStart = 0;
-            _receivedAcks = new NetBitArray(NetConstants.SequenceNumbers);
-            StoredMessages = new NetStoredReliableMessage[_windowSize];
+            StoredMessages = new NetStoredReliableMessage[windowSize];
             ResendDelay = connection.ResendDelay;
         }
 
         public override int GetAllowedSends()
         {
-            int retval = _windowSize - NetUtility.PowOf2Mod(
+            int value = WindowSize - NetUtility.PowOf2Mod(
                 _sendStart + NetConstants.SequenceNumbers - _windowStart,
                 NetConstants.SequenceNumbers);
 
-            LidgrenException.Assert(retval >= 0 && retval <= _windowSize);
-            return retval;
+            LidgrenException.Assert(value >= 0 && value <= WindowSize);
+            return value;
         }
 
         public override void Reset()
         {
-            _receivedAcks.Clear();
             for (int i = 0; i < StoredMessages.Length; i++)
+            {
                 StoredMessages[i].Reset();
-            QueuedSends.Clear();
-            _windowStart = 0;
-            _sendStart = 0;
+            }
+            base.Reset();
         }
 
         public override NetSendResult Enqueue(NetOutgoingMessage message)
@@ -63,6 +48,7 @@ namespace Lidgren.Network
         // call this regularely
         public override NetSocketResult SendQueuedMessages(TimeSpan now)
         {
+            NetConnection connection = Connection;
             TimeSpan resendDelay = ResendDelay;
 
             for (int i = 0; i < StoredMessages.Length; i++)
@@ -74,32 +60,30 @@ namespace Lidgren.Network
                 TimeSpan t = storedMessage.LastSent;
                 if (t > TimeSpan.Zero && (now - t) > resendDelay)
                 {
-                    var sendResult = _connection.QueueSendMessage(storedMessage.Message, storedMessage.SequenceNumber);
+                    var sendResult = connection.QueueSendMessage(storedMessage.Message, storedMessage.SequenceNumber);
                     if (!sendResult.Success)
                     {
                         return sendResult;
                     }
                     storedMessage.LastSent = now;
                     storedMessage.NumSent++;
-                    _connection.Statistics.MessageResent(MessageResendReason.Delay);
+                    connection.Statistics.MessageResent(MessageResendReason.Delay);
 
                 }
             }
 
             int num = GetAllowedSends();
-            if (num > 0)
+            while (num > 0 && QueuedSends.TryDequeue(out NetOutgoingMessage? message))
             {
-                while (num > 0 && QueuedSends.TryDequeue(out NetOutgoingMessage? message))
+                var sendResult = ExecuteSend(now, message);
+                if (!sendResult.Success)
                 {
-                    var sendResult = ExecuteSend(now, message);
-                    if (!sendResult.Success)
-                    {
-                        QueuedSends.EnqueueFirst(message);
-                        return sendResult;
-                    }
-                    num--;
-                    LidgrenException.Assert(num == GetAllowedSends());
+                    QueuedSends.EnqueueFirst(message);
+                    return sendResult;
                 }
+                num--;
+
+                LidgrenException.Assert(num == GetAllowedSends());
             }
 
             NotifyIdleWaiters(now, num);
@@ -110,11 +94,12 @@ namespace Lidgren.Network
         private NetSocketResult ExecuteSend(TimeSpan now, NetOutgoingMessage message)
         {
             int seqNr = _sendStart;
+            int windowSize = WindowSize;
 
-            ref NetStoredReliableMessage storedMessage = ref StoredMessages[NetUtility.PowOf2Mod(seqNr, _windowSize)];
+            ref NetStoredReliableMessage storedMessage = ref StoredMessages[NetUtility.PowOf2Mod(seqNr, windowSize)];
             LidgrenException.Assert(storedMessage.Message == null);
 
-            var sendResult = _connection.QueueSendMessage(message, seqNr);
+            var sendResult = Connection.QueueSendMessage(message, seqNr);
             if (sendResult.Success)
             {
                 _sendStart = NetUtility.PowOf2Mod(seqNr + 1, NetConstants.SequenceNumbers);
@@ -140,7 +125,7 @@ namespace Lidgren.Network
 #endif
             {
                 if (Interlocked.Decrement(ref storedMessage.Message._recyclingCount) <= 0)
-                    _connection.Peer.Recycle(storedMessage.Message);
+                    Connection.Peer.Recycle(storedMessage.Message);
             }
             storedMessage.Reset();
         }
@@ -149,6 +134,8 @@ namespace Lidgren.Network
         // seqNr is the actual nr received
         public override NetSocketResult ReceiveAcknowledge(TimeSpan now, int seqNr)
         {
+            NetConnection connection = Connection;
+            int windowSize = WindowSize;
             ref int windowStart = ref _windowStart;
 
             // late (dupe), on time or early ack?
@@ -160,7 +147,6 @@ namespace Lidgren.Network
                 return new NetSocketResult(true, false); // late/duplicate ack
             }
 
-            int windowSize = _windowSize;
             NetBitArray receivedAcks = _receivedAcks;
 
             if (relate == 0)
@@ -204,8 +190,10 @@ namespace Lidgren.Network
             if (sendRelate <= 0)
             {
                 // yes, we've sent this message - it's an early (but valid) ack
-                if (!receivedAcks[seqNr])
+                //if (!receivedAcks[seqNr])
+                {
                     receivedAcks[seqNr] = true;
+                }
                 //else
                 //   we've already destored/been acked for this message
             }
@@ -238,13 +226,13 @@ namespace Lidgren.Network
 
                         if (now - storedMessage.LastSent >= resendDelay)
                         {
-                            var sendResult = _connection.QueueSendMessage(storedMessage.Message, rnr);
+                            var sendResult = connection.QueueSendMessage(storedMessage.Message, rnr);
                             if (!sendResult.Success)
                                 return sendResult;
 
                             storedMessage.NumSent++;
                             storedMessage.LastSent = now;
-                            _connection.Statistics.MessageResent(MessageResendReason.HoleInSequence);
+                            connection.Statistics.MessageResent(MessageResendReason.HoleInSequence);
                         }
                         //else
                         //    already resent recently

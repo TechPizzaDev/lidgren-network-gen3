@@ -6,7 +6,7 @@ namespace Lidgren.Network
 		private int _lastReceivedSequenceNumber = -1;
 
 		public NetUnreliableSequencedReceiver(NetConnection connection)
-			: base(connection)
+			: base(connection, 1)
 		{
 		}
 

@@ -5,28 +5,47 @@ using System.Threading.Tasks;
 
 namespace Lidgren.Network
 {
-    internal abstract class NetSenderChannel
+    internal abstract class NetSenderChannel : NetChannel
     {
         private List<NetValueTimeoutAwaitable> _idleWaiters = new();
 
-        // access this directly to queue things in this channel
-        public NetQueue<NetOutgoingMessage> QueuedSends { get; } = new NetQueue<NetOutgoingMessage>(16);
+        protected int _sendStart;
+        protected NetBitArray _receivedAcks;
 
-        public abstract int WindowSize { get; }
+        // access this directly to queue things in this channel
+        public NetQueue<NetOutgoingMessage> QueuedSends { get; } = new(16);
+
+        protected NetSenderChannel(NetConnection connection, int windowSize) : base(connection, windowSize)
+        {
+            _receivedAcks = new NetBitArray(NetConstants.SequenceNumbers);
+        }
+
+        protected override void OnWindowSizeChanged()
+        {
+        }
 
         public abstract int GetAllowedSends();
 
         public abstract NetSendResult Enqueue(NetOutgoingMessage message);
+        
         public abstract NetSocketResult SendQueuedMessages(TimeSpan now);
-        public abstract void Reset();
+
+        public override void Reset()
+        {
+            QueuedSends.Clear();
+            _receivedAcks.Clear();
+            _sendStart = 0;
+            base.Reset();
+        }
+
         public abstract NetSocketResult ReceiveAcknowledge(TimeSpan now, int sequenceNumber);
 
-        public virtual int GetFreeWindowSlots()
+        public int GetFreeWindowSlots()
         {
             return GetAllowedSends() - QueuedSends.Count;
         }
 
-        protected virtual void NotifyIdleWaiters(TimeSpan now, int allowedSends)
+        protected void NotifyIdleWaiters(TimeSpan now, int allowedSends)
         {
             int freeWindowSlots = allowedSends - QueuedSends.Count;
 
@@ -42,7 +61,7 @@ namespace Lidgren.Network
             }
         }
 
-        public virtual ValueTask<int> WaitForIdleAsync(int millisecondsTimeout, CancellationToken cancellationToken)
+        public ValueTask<int> WaitForIdleAsync(int millisecondsTimeout, CancellationToken cancellationToken)
         {
             if (millisecondsTimeout < 1)
             {
@@ -54,16 +73,6 @@ namespace Lidgren.Network
             ValueTask<int> task = waiter.RunAsync(timeoutTarget, cancellationToken);
             _idleWaiters.Add(waiter);
             return task;
-        }
-
-        public virtual int WaitForIdle(int millisecondsTimeout, CancellationToken cancellationToken)
-        {
-            var task = WaitForIdleAsync(millisecondsTimeout, cancellationToken);
-            while (!task.IsCompleted)
-            {
-                Thread.Sleep(1);
-            }
-            return task.Result;
         }
     }
 }
