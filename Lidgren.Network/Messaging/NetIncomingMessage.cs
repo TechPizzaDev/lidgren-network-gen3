@@ -2,6 +2,7 @@
 using System.Diagnostics;
 using System;
 using System.Buffers;
+using System.Net.Sockets;
 
 namespace Lidgren.Network
 {
@@ -23,7 +24,7 @@ namespace Lidgren.Network
         /// <summary>
         /// Gets the <see cref="IPEndPoint"/> of the sender, if any.
         /// </summary>
-        public IPEndPoint? SenderEndPoint { get; internal set; }
+        public NetAddress SenderAddress { get; }
 
         /// <summary>
         /// Gets the <see cref="NetConnection"/> of the sender, if any.
@@ -55,14 +56,15 @@ namespace Lidgren.Network
             IsFragment,
             ReceiveTime,
             SequenceNumber,
-            SenderEndPoint,
+            SenderAddress,
             SenderConnection,
             this,
             GetBuffer().AsSpan(0, ByteLength),
             BitLength);
 
-        public NetIncomingMessage(ArrayPool<byte> storagePool) : base(storagePool)
+        public NetIncomingMessage(ArrayPool<byte> storagePool, AddressFamily addressFamily) : base(storagePool)
         {
+            SenderAddress = new NetAddress(addressFamily);
         }
 
         internal void Reset()
@@ -72,7 +74,7 @@ namespace Lidgren.Network
             BitPosition = 0;
             BitLength = 0;
             SenderConnection = null;
-            SenderEndPoint = null;
+            default(NetAddress).WriteTo(SenderAddress);
             IsFragment = false;
             SequenceNumber = 0;
             ReceiveTime = default;

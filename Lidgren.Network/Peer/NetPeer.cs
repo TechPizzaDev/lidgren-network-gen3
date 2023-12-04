@@ -1,13 +1,12 @@
 ﻿using System;
-using System.Threading;
+using System.Buffers;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Net;
-using System.Net.Sockets;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
-using System.Collections.Concurrent;
-using System.Diagnostics;
-using System.Buffers;
+using System.Net;
+using System.Threading;
 
 namespace Lidgren.Network
 {
@@ -21,16 +20,13 @@ namespace Lidgren.Network
         private bool _isDisposed;
         private NetOutgoingMessage? _shutdownReason;
 
-        private object MessageReceivedEventInitMutex { get; } = new object();
+        private object MessageReceivedEventInitMutex { get; } = new();
 
-        private ConcurrentDictionary<IPEndPoint, NetConnection> ConnectionLookup { get; } =
-            new ConcurrentDictionary<IPEndPoint, NetConnection>();
+        private ConcurrentDictionary<NetAddress, NetConnection> ConnectionLookup { get; } = new();
 
-        internal List<NetConnection> Connections { get; } =
-            new List<NetConnection>();
+        internal List<NetConnection> Connections { get; } = new();
 
-        public NetMessageScheduler DefaultScheduler { get; } =
-            new NetMessageScheduler();
+        public NetMessageScheduler DefaultScheduler { get; } = new();
 
         /// <summary>
         /// Gets the <see cref="NetPeerStatus"/> of the <see cref="NetPeer"/>.
@@ -108,10 +104,7 @@ namespace Lidgren.Network
         {
             Configuration = config ?? throw new ArgumentNullException(nameof(config));
 
-            if (Configuration.LocalAddress.AddressFamily == AddressFamily.InterNetworkV6)
-                _senderRemote = new IPEndPoint(IPAddress.IPv6Any, 0);
-            else
-                _senderRemote = new IPEndPoint(IPAddress.Any, 0);
+            _senderRemote = new SocketAddress(Configuration.LocalAddress.AddressFamily);
 
             Statistics = new NetPeerStatistics(this);
             UPnP = new NetUPnP(this);
@@ -176,8 +169,8 @@ namespace Lidgren.Network
             IPEndPoint endPoint, [MaybeNullWhen(false)] out NetConnection? connection)
         {
             Debug.Assert(endPoint != null);
-
-            return ConnectionLookup.TryGetValue(endPoint, out connection);
+         
+            return ConnectionLookup.TryGetValue(new NetAddress(endPoint), out connection);
         }
 
         /// <summary>
@@ -281,7 +274,7 @@ namespace Lidgren.Network
         }
 
         // send message immediately
-        internal void SendLibraryMessage(NetOutgoingMessage message, IPEndPoint recipient)
+        internal void SendLibraryMessage(NetOutgoingMessage message, NetAddress recipient)
         {
             AssertIsOnLibraryThread();
             LidgrenException.Assert(!message._isSent);
@@ -294,11 +287,11 @@ namespace Lidgren.Network
         /// <summary>
         /// Send raw bytes; only used for debugging. 
         /// </summary>
-        public NetSocketResult RawSend(byte[] buffer, int offset, int length, IPEndPoint destination)
+        public NetSocketResult RawSend(ReadOnlySpan<byte> buffer, NetAddress destination)
         {
             // wrong thread might crash with network thread
-            Array.Copy(buffer, offset, _sendBuffer, 0, length);
-            return SendPacket(length, destination, 1);
+            buffer.CopyTo(_sendBuffer);
+            return SendPacket(buffer.Length, destination, 1);
         }
 
         /// <summary>

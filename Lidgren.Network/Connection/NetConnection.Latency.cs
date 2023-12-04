@@ -76,7 +76,7 @@ namespace Lidgren.Network
 
             int length = 0;
             _pingPongBuffer.Encode(Peer._sendBuffer, ref length, 0);
-            Peer.SendPacket(length, RemoteEndPoint, 1);
+            Peer.SendPacket(length, RemoteAddress, 1);
         }
 
         internal void SendPong(byte pongNumber)
@@ -93,7 +93,7 @@ namespace Lidgren.Network
 
             int length = 0;
             _pingPongBuffer.Encode(Peer._sendBuffer, ref length, 0);
-            Peer.SendPacket(length, RemoteEndPoint, 1);
+            Peer.SendPacket(length, RemoteAddress, 1);
         }
 
         internal void ReceivedPong(TimeSpan now, byte pongNumber, TimeSpan remoteSendTime)
@@ -139,9 +139,8 @@ namespace Lidgren.Network
 
             if (Peer.Configuration.IsMessageTypeEnabled(NetIncomingMessageType.ConnectionLatencyUpdated))
             {
-                var updateMsg = Peer.CreateIncomingMessage(NetIncomingMessageType.ConnectionLatencyUpdated);
+                var updateMsg = Peer.CreateIncomingMessage(NetIncomingMessageType.ConnectionLatencyUpdated, RemoteAddress);
                 updateMsg.SenderConnection = this;
-                updateMsg.SenderEndPoint = RemoteEndPoint;
                 updateMsg.Write(rtt);
                 Peer.ReleaseMessage(updateMsg);
             }

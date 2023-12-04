@@ -29,7 +29,7 @@ namespace Lidgren.Network
             _fragmentGroup != 0,
             TimeSpan.Zero,
             0,
-            null,
+            default,
             null,
             this,
             GetBuffer().AsSpan(0, ByteLength),

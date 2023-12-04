@@ -21,8 +21,7 @@ namespace Lidgren.Network
 
         public static int GetMTU(IEnumerable<NetConnection?> connections, out int recipientCount)
         {
-            if (connections == null)
-                throw new ArgumentNullException(nameof(connections));
+            ArgumentNullException.ThrowIfNull(connections);
 
             int mtu = NetPeerConfiguration.DefaultMTU;
             recipientCount = 0;
@@ -173,7 +172,7 @@ namespace Lidgren.Network
             {
                 if (recipientList.Count == 0)
                     return NetSendResult.NoRecipients;
-                
+
                 if (recipientList.Count > 1)
                     throw new NotImplementedException("The method can only send to one recipient at the time.");
 
@@ -186,7 +185,15 @@ namespace Lidgren.Network
             }
         }
 
-        private void SendUnconnectedMessageCore(NetOutgoingMessage message, IPEndPoint recipient)
+        private void CheckUnconnectedMessage(NetOutgoingMessage message)
+        {
+            ArgumentNullException.ThrowIfNull(message);
+
+            message.AssertNotSent(nameof(message));
+            AssertValidUnconnectedLength(message);
+        }
+
+        private void SendUnconnectedMessageCore(NetOutgoingMessage message, NetAddress recipient)
         {
             message._messageType = NetMessageType.Unconnected;
             message._isSent = true;
@@ -200,18 +207,12 @@ namespace Lidgren.Network
         /// </summary>
         public void SendUnconnectedMessage(NetOutgoingMessage message, ReadOnlySpan<char> host, int port)
         {
-            if (message == null)
-                throw new ArgumentNullException(nameof(message));
-
-            message.AssertNotSent(nameof(message));
-            AssertValidUnconnectedLength(message);
-
+            CheckUnconnectedMessage(message);
             IPAddress? address = NetUtility.Resolve(host);
             if (address == null)
                 throw new LidgrenException("Failed to resolve " + host.ToString());
 
-            IPEndPoint recipient = new(address, port);
-            SendUnconnectedMessageCore(message, recipient);
+            SendUnconnectedMessageCore(message, new NetAddress(address, port));
         }
 
         /// <summary>
@@ -219,13 +220,17 @@ namespace Lidgren.Network
         /// </summary>
         public void SendUnconnectedMessage(NetOutgoingMessage message, IPEndPoint recipient)
         {
-            if (message == null)
-                throw new ArgumentNullException(nameof(message));
-            if (recipient == null)
-                throw new ArgumentNullException(nameof(recipient));
+            SendUnconnectedMessage(message, new NetAddress(recipient));
+        }
 
-            message.AssertNotSent(nameof(message));
-            AssertValidUnconnectedLength(message);
+        /// <summary>
+        /// Send a message to an unconnected host.
+        /// </summary>
+        public void SendUnconnectedMessage(NetOutgoingMessage message, NetAddress recipient)
+        {
+            CheckUnconnectedMessage(message);
+            if (recipient.IsEmpty)
+                throw new ArgumentException(null, nameof(recipient));
 
             SendUnconnectedMessageCore(message, recipient);
         }
@@ -233,30 +238,25 @@ namespace Lidgren.Network
         /// <summary>
         /// Send a message to an unconnected recipients.
         /// </summary>
-        public void SendUnconnectedMessage(NetOutgoingMessage message, IEnumerable<IPEndPoint?> recipients)
+        public void SendUnconnectedMessage(NetOutgoingMessage message, IEnumerable<NetAddress> recipients)
         {
-            if (message == null)
-                throw new ArgumentNullException(nameof(message));
-            if (recipients == null)
-                throw new ArgumentNullException(nameof(recipients));
-
-            AssertValidUnconnectedLength(message);
-            message.AssertNotSent(nameof(message));
+            CheckUnconnectedMessage(message);
+            ArgumentNullException.ThrowIfNull(recipients);
 
             message._messageType = NetMessageType.Unconnected;
             message._isSent = true;
 
             int recipientCount = 0;
-            foreach (IPEndPoint? recipient in recipients.AsListEnumerator())
+            foreach (NetAddress recipient in recipients.AsListEnumerator())
             {
-                if (recipient != null)
+                if (!recipient.IsEmpty)
                     recipientCount++;
             }
             Interlocked.Add(ref message._recyclingCount, recipientCount);
 
-            foreach (IPEndPoint? endPoint in recipients.AsListEnumerator())
+            foreach (NetAddress endPoint in recipients.AsListEnumerator())
             {
-                if (endPoint != null)
+                if (!endPoint.IsEmpty)
                 {
                     UnsentUnconnectedMessages.Enqueue((endPoint, message));
                 }
@@ -268,8 +268,7 @@ namespace Lidgren.Network
         /// </summary>
         public void SendUnconnectedToSelf(NetOutgoingMessage message)
         {
-            if (message == null)
-                throw new ArgumentNullException(nameof(message));
+            ArgumentNullException.ThrowIfNull(message);
             message.AssertNotSent(nameof(message));
 
             if (Socket == null)
@@ -285,8 +284,10 @@ namespace Lidgren.Network
             om.Write(message);
             om.IsFragment = false;
             om.ReceiveTime = NetTime.Now;
-            om.SenderConnection = null;
-            om.SenderEndPoint = Socket.LocalEndPoint as IPEndPoint;
+            if (Socket.LocalEndPoint is IPEndPoint endPoint)
+            {
+                new NetAddress(endPoint).WriteTo(om.SenderAddress);
+            }
             LidgrenException.Assert(om.BitLength == message.BitLength);
 
             ReleaseMessage(om);

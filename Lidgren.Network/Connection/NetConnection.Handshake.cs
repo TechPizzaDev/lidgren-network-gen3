@@ -116,7 +116,7 @@ namespace Lidgren.Network
                 SetStatus(NetConnectionStatus.Disconnected, reason);
 
             // in case we're still in handshake
-            Peer.Handshakes.TryRemove(RemoteEndPoint, out _);
+            Peer.Handshakes.TryRemove(RemoteAddress, out _);
 
             _disconnectRequested = false;
             _connectRequested = false;
@@ -149,7 +149,7 @@ namespace Lidgren.Network
 
             WriteLocalHail(om);
 
-            Peer.SendLibraryMessage(om, RemoteEndPoint);
+            Peer.SendLibraryMessage(om, RemoteAddress);
 
             _connectRequested = false;
             _lastHandshakeSendTime = now;
@@ -179,9 +179,9 @@ namespace Lidgren.Network
             WriteLocalHail(om);
 
             if (onLibraryThread)
-                Peer.SendLibraryMessage(om, RemoteEndPoint);
+                Peer.SendLibraryMessage(om, RemoteAddress);
             else
-                Peer.UnsentUnconnectedMessages.Enqueue((RemoteEndPoint, om));
+                Peer.UnsentUnconnectedMessages.Enqueue((RemoteAddress, om));
 
             _lastHandshakeSendTime = now;
             _handshakeAttempts++;
@@ -205,9 +205,9 @@ namespace Lidgren.Network
             }
 
             if (onLibraryThread)
-                Peer.SendLibraryMessage(message, RemoteEndPoint);
+                Peer.SendLibraryMessage(message, RemoteAddress);
             else
-                Peer.UnsentUnconnectedMessages.Enqueue((RemoteEndPoint, message));
+                Peer.UnsentUnconnectedMessages.Enqueue((RemoteAddress, message));
         }
 
         private void WriteLocalHail(NetOutgoingMessage om)
@@ -235,7 +235,7 @@ namespace Lidgren.Network
             NetOutgoingMessage om = Peer.CreateMessage();
             om._messageType = NetMessageType.ConnectionEstablished;
             om.Write(NetTime.Now);
-            Peer.SendLibraryMessage(om, RemoteEndPoint);
+            Peer.SendLibraryMessage(om, RemoteAddress);
 
             _handshakeAttempts = 0;
 
@@ -275,7 +275,7 @@ namespace Lidgren.Network
             SendDisconnect(reason, false);
 
             // remove from handshakes
-            Peer.Handshakes.TryRemove(RemoteEndPoint, out _);
+            Peer.Handshakes.TryRemove(RemoteAddress, out _);
         }
 
         internal void ReceivedHandshake(TimeSpan now, NetMessageType type, int offset, int payloadLength)
@@ -305,11 +305,9 @@ namespace Lidgren.Network
                             if (_peerConfiguration.IsMessageTypeEnabled(NetIncomingMessageType.ConnectionApproval))
                             {
                                 // ok, let's not add connection just yet
-                                var appMsg = Peer.CreateIncomingMessage(NetIncomingMessageType.ConnectionApproval);
-
+                                var appMsg = Peer.CreateIncomingMessage(NetIncomingMessageType.ConnectionApproval, RemoteAddress);
                                 appMsg.ReceiveTime = now;
                                 appMsg.SenderConnection = this;
-                                appMsg.SenderEndPoint = RemoteEndPoint;
 
                                 if (RemoteHailMessage != null)
                                     appMsg.Write(RemoteHailMessage.GetBuffer().AsSpan(0, RemoteHailMessage.ByteLength));
@@ -391,11 +389,11 @@ namespace Lidgren.Network
                     break;
 
                 case NetMessageType.Discovery:
-                    Peer.HandleIncomingDiscoveryRequest(now, RemoteEndPoint, offset, payloadLength);
+                    Peer.HandleIncomingDiscoveryRequest(now, RemoteAddress, offset, payloadLength);
                     return;
 
                 case NetMessageType.DiscoveryResponse:
-                    Peer.HandleIncomingDiscoveryResponse(now, RemoteEndPoint, offset, payloadLength);
+                    Peer.HandleIncomingDiscoveryResponse(now, RemoteAddress, offset, payloadLength);
                     return;
 
                 case NetMessageType.Ping:

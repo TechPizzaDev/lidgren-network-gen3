@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO.Pipelines;
 using System.Threading.Tasks;
 using System.Buffers;
+using System.Diagnostics;
 
 namespace Lidgren.Network
 {
@@ -272,7 +273,8 @@ namespace Lidgren.Network
                 return false;
             }
 
-            NetConnection connection = message.Connection!;
+            NetConnection? connection = message.Connection;
+            Debug.Assert(connection != null);
 
             if (!connection._receivedNormalFragmentGroups.TryGetValue(group, out ReceivedNormalFragmentGroup? info))
             {
@@ -334,8 +336,9 @@ namespace Lidgren.Network
 
                     connection._openedStreamGroups.Enqueue(info.Pipe.Reader);
 
-                    NetIncomingMessage noticeMessage = CreateIncomingMessage(NetIncomingMessageType.DataStream);
+                    NetIncomingMessage noticeMessage = CreateIncomingMessage(NetIncomingMessageType.DataStream, message.Address);
                     noticeMessage.SenderConnection = connection;
+                    noticeMessage.ReceiveTime = message.Time;
                     ReleaseMessage(noticeMessage);
                 }
 

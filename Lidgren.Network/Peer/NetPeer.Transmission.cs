@@ -10,11 +10,11 @@ namespace Lidgren.Network
     {
         private readonly struct DelayedPacket
         {
-            public byte[] Data { get; }
+            public ReadOnlyMemory<byte> Data { get; }
             public TimeSpan DelayedUntil { get; }
-            public IPEndPoint Target { get; }
+            public NetAddress Target { get; }
 
-            public DelayedPacket(byte[] data, TimeSpan delayedUntil, IPEndPoint target)
+            public DelayedPacket(ReadOnlyMemory<byte> data, TimeSpan delayedUntil, NetAddress target)
             {
                 Data = data;
                 DelayedUntil = delayedUntil;
@@ -22,12 +22,12 @@ namespace Lidgren.Network
             }
         }
 
-        private List<DelayedPacket> DelayedPackets { get; } = new List<DelayedPacket>();
+        private List<DelayedPacket> DelayedPackets { get; } = new();
 
         //Avoids allocation on mapping to IPv6
-        private IPEndPoint _targetCopy = new IPEndPoint(IPAddress.Any, 0);
+        private NetAddress _targetCopy = new(AddressFamily.InterNetworkV6);
 
-        internal NetSocketResult SendPacket(int byteCount, IPEndPoint target, int numMessages)
+        internal NetSocketResult SendPacket(int byteCount, NetAddress target, int numMessages)
         {
             // simulate loss
             float loss = Configuration._loss;
@@ -46,7 +46,7 @@ namespace Lidgren.Network
                 Configuration._randomOneWayLatency == TimeSpan.Zero)
             {
                 // no latency simulation
-                var sendResult = ActuallySendPacket(_sendBuffer, byteCount, target);
+                var sendResult = ActuallySendPacket(_sendBuffer.AsMemory(0, byteCount), target);
 
                 // TODO: handle 'wasSent == false' better?
 
@@ -95,7 +95,7 @@ namespace Lidgren.Network
                 DelayedPacket p = DelayedPackets[i];
                 if (now > p.DelayedUntil)
                 {
-                    ActuallySendPacket(p.Data, p.Data.Length, p.Target);
+                    ActuallySendPacket(p.Data, p.Target);
                     DelayedPackets.RemoveAt(i);
                 }
             }
@@ -108,14 +108,12 @@ namespace Lidgren.Network
 
             foreach (DelayedPacket p in DelayedPackets)
             {
-                ActuallySendPacket(p.Data, p.Data.Length, p.Target);
+                ActuallySendPacket(p.Data, p.Target);
             }
             DelayedPackets.Clear();
         }
 
-        // TODO: replace byte[] with Memory<byte> in the future (held back by Socket.SendTo)
-        // https://github.com/dotnet/runtime/issues/33418
-        internal NetSocketResult ActuallySendPacket(byte[] data, int byteCount, IPEndPoint target)
+        internal NetSocketResult ActuallySendPacket(ReadOnlyMemory<byte> data, NetAddress target)
         {
             Socket? socket = Socket;
             Debug.Assert(socket != null, "No socket bound.");
@@ -125,14 +123,17 @@ namespace Lidgren.Network
             {
                 IPAddress? ba = NetUtility.GetBroadcastAddress();
 
-                // TODO: refactor this check outta here
-                if (target.Address.Equals(ba))
+                NetAddress targetAddr;
+
+                // TODO: refactor these checks outta here
+                if (ba != null && target.AddressEquals(ba))
                 {
                     // Some networks do not allow 
                     // a global broadcast so we use the BroadcastAddress from the configuration
-                    // this can be resolved to a local broadcast addresss e.g 192.168.x.255                    
-                    _targetCopy.Address = Configuration.BroadcastAddress;
-                    _targetCopy.Port = target.Port;
+                    // this can be resolved to a local broadcast addresss e.g 192.168.x.255
+                    NetAddress.WriteAddress(_targetCopy, Configuration.BroadcastAddress);
+                    NetAddress.WritePort(_targetCopy, target.GetPort());
+                    targetAddr = _targetCopy;
 
                     socket.EnableBroadcast = true;
                     broadcasting = true;
@@ -142,21 +143,21 @@ namespace Lidgren.Network
                     Configuration.LocalAddress.AddressFamily == AddressFamily.InterNetworkV6)
                 {
                     // Maps to IPv6 for Dual Mode
-                    NetUtility.MapToIPv6(target, _targetCopy);
+                    target.WriteAsIPv6To(_targetCopy);
+                    targetAddr = _targetCopy;
                 }
                 else
                 {
-                    _targetCopy.Port = target.Port;
-                    _targetCopy.Address = target.Address;
+                    targetAddr = target;
                 }
 
-                int bytesSent = socket.SendTo(data, 0, byteCount, SocketFlags.None, _targetCopy);
-                if (byteCount != bytesSent)
+                int bytesSent = socket.SendTo(data.Span, SocketFlags.None, targetAddr.GetSocketAddress());
+                if (data.Length != bytesSent)
                 {
                     LogWarning(NetLogMessage.FromValues(NetLogCode.FullSendFailure,
                         endPoint: target,
                         value: bytesSent,
-                        maxValue: byteCount));
+                        maxValue: data.Length));
                 }
                 //LogDebug("Sent " + numBytes + " bytes");
             }

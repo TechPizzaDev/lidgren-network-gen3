@@ -71,9 +71,7 @@ namespace UnitTests
             //RawSocketTests.Run();
 
             NetStreamingMessageTest.Run(args.Length > 0 ? args[0] : null);
-
-            //NetStreamTests.Run();
-
+            
             //EncryptionTests.Run(peer);
 
             Console.WriteLine();
@@ -119,10 +117,10 @@ namespace UnitTests
             }
 
             var om = peer.CreateMessage("henlo from myself");
-            peer.SendUnconnectedMessage(om, new IPEndPoint(IPAddress.Loopback, peer.Port));
+            peer.SendUnconnectedMessage(om, new NetAddress(IPAddress.Loopback, peer.Port));
             try
-            {
-                peer.SendUnconnectedMessage(om, new IPEndPoint(IPAddress.Loopback, peer.Port));
+            { 
+                peer.SendUnconnectedMessage(om, new NetAddress(IPAddress.Loopback, peer.Port));
 
                 Console.WriteLine(nameof(CannotResendException) + " check failed");
             }
@@ -141,7 +139,7 @@ namespace UnitTests
 
         public static NetIncomingMessage CreateIncomingMessage(ReadOnlySpan<byte> fromData, int bitLength)
         {
-            var message = new NetIncomingMessage(ArrayPool<byte>.Shared);
+            var message = new NetIncomingMessage(ArrayPool<byte>.Shared, AddressFamily.InterNetwork);
             message.Write(fromData);
             message.BitPosition = 0;
             message.BitLength = bitLength;

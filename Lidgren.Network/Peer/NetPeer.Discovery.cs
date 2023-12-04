@@ -12,7 +12,7 @@ namespace Lidgren.Network
         {
             NetOutgoingMessage om = CreateMessage();
             om._messageType = NetMessageType.Discovery;
-            UnsentUnconnectedMessages.Enqueue((new IPEndPoint(IPAddress.Broadcast, serverPort), om));
+            UnsentUnconnectedMessages.Enqueue((new NetAddress(IPAddress.Broadcast, serverPort), om));
         }
 
         /// <summary>
@@ -33,9 +33,11 @@ namespace Lidgren.Network
         /// </summary>
         public void DiscoverKnownPeer(IPEndPoint endPoint)
         {
+            ArgumentNullException.ThrowIfNull(endPoint);
+
             NetOutgoingMessage om = CreateMessage();
             om._messageType = NetMessageType.Discovery;
-            UnsentUnconnectedMessages.Enqueue((endPoint, om));
+            UnsentUnconnectedMessages.Enqueue((new NetAddress(endPoint), om));
         }
 
         /// <summary>
@@ -43,8 +45,7 @@ namespace Lidgren.Network
         /// </summary>
         public void SendDiscoveryResponse(IPEndPoint recipient, NetOutgoingMessage? message = null)
         {
-            if (recipient == null)
-                throw new ArgumentNullException(nameof(recipient));
+            ArgumentNullException.ThrowIfNull(recipient);
 
             if (message == null)
                 message = CreateMessage();
@@ -53,11 +54,11 @@ namespace Lidgren.Network
 
             if (message.ByteLength >= Configuration.MaximumTransmissionUnit)
                 throw new LidgrenException(
-                    "Cannot send discovery message larger than MTU (currently " + 
+                    "Cannot send discovery message larger than MTU (currently " +
                     Configuration.MaximumTransmissionUnit + " bytes).");
 
             message._messageType = NetMessageType.DiscoveryResponse;
-            UnsentUnconnectedMessages.Enqueue((recipient, message));
+            UnsentUnconnectedMessages.Enqueue((new NetAddress(recipient), message));
         }
     }
 }

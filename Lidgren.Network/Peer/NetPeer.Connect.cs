@@ -19,10 +19,12 @@ namespace Lidgren.Network
             if (Status == NetPeerStatus.NotRunning)
                 throw new LidgrenException("Must call Start() first.");
 
-            if (ConnectionLookup.ContainsKey(remoteEndPoint))
+            NetAddress addr = new(remoteEndPoint);
+
+            if (ConnectionLookup.ContainsKey(addr))
                 throw new LidgrenException("Already connected to that endpoint!");
 
-            if (Handshakes.TryGetValue(remoteEndPoint, out NetConnection? hs))
+            if (Handshakes.TryGetValue(addr, out NetConnection? hs))
             {
                 // already trying to connect to that endpoint; make another try
                 switch (hs.Status)
@@ -39,13 +41,13 @@ namespace Lidgren.Network
 
                     default:
                         // weird
-                        LogWarning(NetLogMessage.FromValues(NetLogCode.UnexpectedHandshakeStatus, value: (int)hs.Status));
+                        LogWarning(NetLogMessage.FromValues(NetLogCode.UnexpectedHandshakeStatus, value: (int) hs.Status));
                         break;
                 }
                 return hs;
             }
 
-            var conn = new NetConnection(this, remoteEndPoint);
+            NetConnection conn = new(this, addr);
             conn.Status = NetConnectionStatus.InitiatedConnect;
             conn.LocalHailMessage = hailMessage;
 
@@ -53,7 +55,7 @@ namespace Lidgren.Network
             conn._connectRequested = true;
             conn._connectionInitiator = true;
 
-            Handshakes.TryAdd(remoteEndPoint, conn);
+            Handshakes.TryAdd(conn.RemoteAddress, conn);
             return conn;
         }
 

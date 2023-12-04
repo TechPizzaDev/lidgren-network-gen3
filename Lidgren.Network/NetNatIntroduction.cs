@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Net;
+using System.Text;
 
 namespace Lidgren.Network
 {
@@ -23,7 +25,7 @@ namespace Lidgren.Network
                 msg.Write(hostInternal);
                 msg.Write(hostExternal);
                 msg.Write(token);
-                UnsentUnconnectedMessages.Enqueue((clientExternal, msg));
+                UnsentUnconnectedMessages.Enqueue((new NetAddress(clientExternal), msg));
             }
 
             // send message to host
@@ -34,7 +36,7 @@ namespace Lidgren.Network
                 msg.Write(clientInternal);
                 msg.Write(clientExternal);
                 msg.Write(token);
-                UnsentUnconnectedMessages.Enqueue((hostExternal, msg));
+                UnsentUnconnectedMessages.Enqueue((new NetAddress(hostExternal), msg));
             }
         }
 
@@ -49,8 +51,8 @@ namespace Lidgren.Network
             NetIncomingMessage tmp = SetupReadHelperMessage(offset, 1000); // never mind length
 
             byte hostByte = tmp.ReadByte();
-            IPEndPoint remoteInternal = tmp.ReadIPEndPoint();
-            IPEndPoint remoteExternal = tmp.ReadIPEndPoint();
+            NetAddress remoteInternal = new(tmp.ReadIPAddress(), tmp.ReadUInt16());
+            NetAddress remoteExternal = new(tmp.ReadIPAddress(), tmp.ReadUInt16());
             string token = tmp.ReadString();
             bool isHost = hostByte != 0;
 
@@ -79,35 +81,36 @@ namespace Lidgren.Network
         /// <summary>
         /// Called when receiving a NatPunchMessage from a remote endpoint
         /// </summary>
-        private void HandleNatPunch(int offset, IPEndPoint senderEndPoint)
+        private void HandleNatPunch(int offset, NetAddress senderAddress)
         {
+            Debug.Assert(senderAddress.IsOwned);
+
             NetIncomingMessage tmp = SetupReadHelperMessage(offset, 1000); // never mind length
 
             byte fromHostByte = tmp.ReadByte();
             if (fromHostByte == 0)
             {
                 // it's from client
-                LogDebug(new NetLogMessage(NetLogCode.HostNATPunchSuccess, endPoint: senderEndPoint));
+                LogDebug(new NetLogMessage(NetLogCode.HostNATPunchSuccess, endPoint: senderAddress));
                 return; // don't alert hosts about nat punch successes; only clients
             }
 
             string token = tmp.ReadString();
-            LogDebug(new NetLogMessage(NetLogCode.ClientNATPunchSuccess, endPoint: senderEndPoint, data: token));
-            
+            LogDebug(new NetLogMessage(NetLogCode.ClientNATPunchSuccess, endPoint: senderAddress, data: token));
+
             //
             // Release punch success to client; enabling him to Connect() to msg.SenderIPEndPoint if token is ok
             //
-            var punchSuccess = CreateIncomingMessage(NetIncomingMessageType.NatIntroductionSuccess);
-            punchSuccess.SenderEndPoint = senderEndPoint;
+            var punchSuccess = CreateIncomingMessage(NetIncomingMessageType.NatIntroductionSuccess, senderAddress);
             punchSuccess.Write(token);
             ReleaseMessage(punchSuccess);
 
             // send a return punch just for good measure
-            var punch = CreateMessage(1);
+            var punch = CreateMessage(1 + Encoding.UTF8.GetMaxByteCount(token.Length));
             punch._messageType = NetMessageType.NatPunchMessage;
             punch.Write((byte)0);
             punch.Write(token);
-            UnsentUnconnectedMessages.Enqueue((senderEndPoint, punch));
+            UnsentUnconnectedMessages.Enqueue((senderAddress, punch));
         }
     }
 }

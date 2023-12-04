@@ -46,7 +46,7 @@ namespace Lidgren.Network
             if (_incomingMessagePool == null ||
                 !_incomingMessagePool.TryDequeue(out NetIncomingMessage? message))
             {
-                message = new NetIncomingMessage(StoragePool);
+                message = new NetIncomingMessage(StoragePool, Configuration.LocalAddress.AddressFamily);
 
                 Interlocked.Increment(ref Statistics._incomingAllocated);
             }
@@ -55,10 +55,10 @@ namespace Lidgren.Network
             return message;
         }
 
-        internal NetIncomingMessage CreateIncomingMessage(NetIncomingMessageType type, string? content)
+        internal NetIncomingMessage CreateIncomingMessage(NetIncomingMessageType type, NetAddress address)
         {
             var message = CreateIncomingMessage(type);
-            message.Write(content);
+            address.WriteTo(message.SenderAddress);
             return message;
         }
 

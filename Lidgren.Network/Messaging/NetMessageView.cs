@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Net;
 
 namespace Lidgren.Network
 {
@@ -10,7 +9,7 @@ namespace Lidgren.Network
         public bool IsFragment { get; }
         public TimeSpan Time { get; }
         public int SequenceNumber { get; }
-        public IPEndPoint? EndPoint { get; }
+        public NetAddress Address { get; }
         public NetConnection? Connection { get; }
         public NetBuffer? Buffer { get; }
         public ReadOnlySpan<byte> Span { get; }
@@ -22,7 +21,7 @@ namespace Lidgren.Network
             bool isFragment,
             TimeSpan time,
             int sequenceNumber,
-            IPEndPoint? endPoint,
+            NetAddress address,
             NetConnection? connection,
             NetBuffer? message,
             ReadOnlySpan<byte> span,
@@ -33,7 +32,7 @@ namespace Lidgren.Network
             IsFragment = isFragment;
             Time = time;
             SequenceNumber = sequenceNumber;
-            EndPoint = endPoint;
+            Address = address;
             Connection = connection;
             Buffer = message;
             Span = span;
@@ -47,14 +46,13 @@ namespace Lidgren.Network
                 return incoming;
             }
 
-            NetIncomingMessage msg = peer.CreateIncomingMessage(MessageType);
+            NetIncomingMessage msg = peer.CreateIncomingMessage(MessageType, Address);
             msg._baseMessageType = BaseMessageType;
             msg.IsFragment = IsFragment;
             msg.ReceiveTime = Time;
             msg.SequenceNumber = SequenceNumber;
             msg.SenderConnection = Connection;
-            msg.SenderEndPoint = EndPoint;
-
+            
             msg.Write(Span);
             msg.BitLength = BitLength;
             msg.BitPosition = 0;

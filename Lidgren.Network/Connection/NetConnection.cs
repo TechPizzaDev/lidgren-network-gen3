@@ -37,6 +37,7 @@ namespace Lidgren.Network
         private bool _isDisposed;
         private int _sendBufferWritePtr;
         private int _sendBufferNumMessages;
+        private IPEndPoint? _remoteEndPoint;
         internal NetPeerConfiguration _peerConfiguration;
         internal NetSenderChannel?[] _sendChannels = new NetSenderChannel[NetConstants.TotalChannels];
         internal NetReceiverChannel?[] _receiveChannels = new NetReceiverChannel[NetConstants.TotalChannels];
@@ -71,9 +72,14 @@ namespace Lidgren.Network
         public NetConnectionStatistics Statistics { get; private set; }
 
         /// <summary>
+        /// Gets the remote address for the connection.
+        /// </summary>
+        public NetAddress RemoteAddress { get; private set; }
+
+        /// <summary>
         /// Gets the remote endpoint for the connection.
         /// </summary>
-        public IPEndPoint RemoteEndPoint { get; private set; }
+        public IPEndPoint RemoteEndPoint => _remoteEndPoint ??= RemoteAddress.GetIPEndPoint();
 
         /// <summary>
         /// Gets the unique identifier of the remote <see cref="NetPeer"/> for this connection.
@@ -101,12 +107,14 @@ namespace Lidgren.Network
 
         public event ConnectionStatusChanged? StatusChanged;
 
-        internal NetConnection(NetPeer peer, IPEndPoint remoteEndPoint)
+        internal NetConnection(NetPeer peer, NetAddress remoteAddress)
         {
+            Debug.Assert(remoteAddress.IsOwned);
+
             Peer = peer;
             _peerConfiguration = Peer.Configuration;
             Status = NetConnectionStatus.None;
-            RemoteEndPoint = remoteEndPoint;
+            RemoteAddress = remoteAddress;
             Statistics = new NetConnectionStatistics(this);
             AverageRoundtripTime = default;
             CurrentMTU = _peerConfiguration.MaximumTransmissionUnit;
@@ -116,9 +124,12 @@ namespace Lidgren.Network
         /// Change the internal endpoint to this new one.
         /// Used when, during handshake, a switch in port is detected (due to NAT).
         /// </summary>
-        internal void MutateEndPoint(IPEndPoint endPoint)
+        internal void MutateAddress(NetAddress address)
         {
-            RemoteEndPoint = endPoint;
+            Debug.Assert(address.IsOwned);
+
+            RemoteAddress = address;
+            _remoteEndPoint = null;
         }
 
         internal void SetStatus(NetConnectionStatus status, NetOutgoingMessage? reason = null)
@@ -139,9 +150,8 @@ namespace Lidgren.Network
 
             if (_peerConfiguration.IsMessageTypeEnabled(NetIncomingMessageType.StatusChanged))
             {
-                NetIncomingMessage info = Peer.CreateIncomingMessage(NetIncomingMessageType.StatusChanged);
+                NetIncomingMessage info = Peer.CreateIncomingMessage(NetIncomingMessageType.StatusChanged, RemoteAddress);
                 info.SenderConnection = this;
-                info.SenderEndPoint = RemoteEndPoint;
                 info.Write(Status);
                 Peer.ReleaseMessage(info);
             }
@@ -248,7 +258,7 @@ namespace Lidgren.Network
                     {
                         // send packet and go for another round of acks
                         LidgrenException.Assert(_sendBufferWritePtr > 0 && _sendBufferNumMessages > 0);
-                        Peer.SendPacket(_sendBufferWritePtr, RemoteEndPoint, _sendBufferNumMessages);
+                        Peer.SendPacket(_sendBufferWritePtr, RemoteAddress, _sendBufferNumMessages);
                         Statistics.PacketSent(_sendBufferWritePtr, 1);
                         _sendBufferWritePtr = 0;
                         _sendBufferNumMessages = 0;
@@ -294,7 +304,7 @@ namespace Lidgren.Network
             if (_sendBufferWritePtr > 0)
             {
                 LidgrenException.Assert(_sendBufferWritePtr > 0 && _sendBufferNumMessages > 0);
-                Peer.SendPacket(_sendBufferWritePtr, RemoteEndPoint, _sendBufferNumMessages);
+                Peer.SendPacket(_sendBufferWritePtr, RemoteAddress, _sendBufferNumMessages);
                 Statistics.PacketSent(_sendBufferWritePtr, _sendBufferNumMessages);
                 _sendBufferWritePtr = 0;
                 _sendBufferNumMessages = 0;
@@ -315,7 +325,7 @@ namespace Lidgren.Network
                 if (_sendBufferWritePtr > 0 && _sendBufferNumMessages > 0)
                 {
                     // previous message in buffer; send these first
-                    var sendResult = Peer.SendPacket(_sendBufferWritePtr, RemoteEndPoint, _sendBufferNumMessages);
+                    var sendResult = Peer.SendPacket(_sendBufferWritePtr, RemoteAddress, _sendBufferNumMessages);
                     if (!sendResult.Success)
                         return sendResult;
 
@@ -332,7 +342,7 @@ namespace Lidgren.Network
             if (_sendBufferWritePtr > CurrentMTU)
             {
                 // send immediately; we're already over MTU
-                var sendResult = Peer.SendPacket(_sendBufferWritePtr, RemoteEndPoint, _sendBufferNumMessages);
+                var sendResult = Peer.SendPacket(_sendBufferWritePtr, RemoteAddress, _sendBufferNumMessages);
                 if (!sendResult.Success)
                     return sendResult;
 

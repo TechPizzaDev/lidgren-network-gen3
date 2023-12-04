@@ -39,8 +39,5 @@ namespace Lidgren.Network
 		/// Reliable, ordered delivery.
 		/// </summary>
 		ReliableOrdered = NetMessageType.UserReliableOrdered1,
-
-		[Obsolete]
-		Stream = 99,
 	}
 }

@@ -62,7 +62,7 @@ namespace Lidgren.Network
             Status = UPnPStatus.Discovering;
 
             Peer.Socket.EnableBroadcast = true;
-            Peer.RawSend(arr, 0, arr.Length, new IPEndPoint(IPAddress.Broadcast, 1900));
+            Peer.RawSend(arr, new NetAddress(IPAddress.Broadcast, 1900));
             Peer.Socket.EnableBroadcast = false;
         }
 

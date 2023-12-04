@@ -34,7 +34,7 @@ namespace Lidgren.Network
         {
             Code = code;
             Exception = exception;
-            EndPoint = (object?)message.Connection ?? message.EndPoint;
+            EndPoint = (object?)message.Connection ?? message.Address;
             Data = message.Buffer;
             PackedValue = message.Time.Ticks;
         }
@@ -67,7 +67,7 @@ namespace Lidgren.Network
             return FromValues(
                 code,
                 exception,
-                (object?)message.Connection ?? message.EndPoint,
+                (object?)message.Connection ?? message.Address,
                 message.Buffer,
                 value,
                 maxValue);
@@ -99,7 +99,7 @@ namespace Lidgren.Network
             return FromTime(
                 code,
                 exception,
-                (object?)message.Connection ?? message.EndPoint,
+                (object?)message.Connection ?? message.Address,
                 message.Buffer,
                 time);
         }

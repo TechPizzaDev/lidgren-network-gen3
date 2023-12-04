@@ -162,7 +162,7 @@ namespace Lidgren.Network
             om.Encode(Peer._sendBuffer, ref length, 0);
             Peer.Recycle(om);
 
-            Peer.SendPacket(length, RemoteEndPoint, 1);
+            Peer.SendPacket(length, RemoteAddress, 1);
 
             //m_peer.LogDebug("Received MTU expand request for " + size + " bytes");
         }

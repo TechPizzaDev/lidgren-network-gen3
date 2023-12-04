@@ -16,7 +16,7 @@ namespace Lidgren.Network
         private object InitMutex { get; } = new object();
 
         private Thread? _networkThread;
-        private EndPoint _senderRemote;
+        private SocketAddress _senderRemote;
         private uint _frameCounter;
         private TimeSpan _lastHeartbeat;
         private TimeSpan _lastSocketBind = TimeSpan.MinValue;
@@ -28,14 +28,11 @@ namespace Lidgren.Network
         internal byte[] _sendBuffer = Array.Empty<byte>();
         internal byte[] _receiveBuffer = Array.Empty<byte>();
 
-        private NetQueue<NetIncomingMessage> ReleasedIncomingMessages { get; } =
-            new NetQueue<NetIncomingMessage>(4);
+        private NetQueue<NetIncomingMessage> ReleasedIncomingMessages { get; } = new(4);
 
-        internal NetQueue<(IPEndPoint EndPoint, NetOutgoingMessage Message)> UnsentUnconnectedMessages { get; } =
-            new NetQueue<(IPEndPoint, NetOutgoingMessage)>(2);
+        internal NetQueue<(NetAddress Address, NetOutgoingMessage Message)> UnsentUnconnectedMessages { get; } = new(2);
 
-        internal ConcurrentDictionary<IPEndPoint, NetConnection> Handshakes { get; } =
-            new ConcurrentDictionary<IPEndPoint, NetConnection>();
+        internal ConcurrentDictionary<NetAddress, NetConnection> Handshakes { get; } = new();
 
         internal bool _executeFlushSendQueue;
 
@@ -359,7 +356,7 @@ namespace Lidgren.Network
 #if DEBUG
                         // sanity check
                         if (conn.Status == NetConnectionStatus.Disconnected &&
-                            Handshakes.TryRemove(conn.RemoteEndPoint, out _))
+                            Handshakes.TryRemove(conn.RemoteAddress, out _))
                         {
                             LogWarning(NetLogMessage.FromValues(NetLogCode.DisconnectedHandshake, endPoint: conn));
                         }
@@ -387,7 +384,7 @@ namespace Lidgren.Network
                         if (conn.Status == NetConnectionStatus.Disconnected)
                         {
                             connections.RemoveAt(i);
-                            ConnectionLookup.TryRemove(conn.RemoteEndPoint, out _);
+                            ConnectionLookup.TryRemove(conn.RemoteAddress, out _);
                         }
                     }
                 }
@@ -400,7 +397,7 @@ namespace Lidgren.Network
                     int length = 0;
                     om.Encode(_sendBuffer, ref length, 0);
 
-                    var (sent, connReset) = SendPacket(length, unsent.EndPoint, 1);
+                    var (sent, connReset) = SendPacket(length, unsent.Address, 1);
                     if (!sent && !connReset)
                     {
                         UnsentUnconnectedMessages.EnqueueFirst(unsent);
@@ -432,8 +429,7 @@ namespace Lidgren.Network
                 int bytesReceived = 0;
                 try
                 {
-                    bytesReceived = socket.ReceiveFrom(
-                        buffer, 0, buffer.Length, SocketFlags.None, ref _senderRemote);
+                    bytesReceived = socket.ReceiveFrom(buffer.AsSpan(), SocketFlags.None, _senderRemote);
 
                     available -= bytesReceived;
                 }
@@ -471,8 +467,8 @@ namespace Lidgren.Network
                         continue;
                 }
 
-                var senderEndPoint = (IPEndPoint)_senderRemote;
-                ConnectionLookup.TryGetValue(senderEndPoint, out NetConnection? sender);
+                NetAddress senderAddress = new(_senderRemote);
+                ConnectionLookup.TryGetValue(senderAddress, out NetConnection? sender);
 
                 //
                 // parse packet into messages
@@ -518,7 +514,7 @@ namespace Lidgren.Network
                             if (sender != null)
                                 sender.ReceivedLibraryMessage(type, offset, payloadByteLength);
                             else
-                                ReceivedUnconnectedLibraryMessage(now, senderEndPoint, type, offset, payloadByteLength);
+                                ReceivedUnconnectedLibraryMessage(now, senderAddress, type, offset, payloadByteLength);
                         }
                         else
                         {
@@ -538,7 +534,7 @@ namespace Lidgren.Network
                                     isFragment,
                                     now,
                                     sequenceNumber,
-                                    senderEndPoint,
+                                    senderAddress,
                                     sender,
                                     null,
                                     span,
@@ -554,7 +550,7 @@ namespace Lidgren.Network
                                     isFragment,
                                     now,
                                     sequenceNumber,
-                                    senderEndPoint,
+                                    senderAddress,
                                     sender,
                                     null,
                                     span,
@@ -565,7 +561,7 @@ namespace Lidgren.Network
                     }
                     catch (Exception ex)
                     {
-                        LogError(new NetLogMessage(NetLogCode.PacketCallbackException, ex, sender, senderEndPoint));
+                        LogError(new NetLogMessage(NetLogCode.PacketCallbackException, ex, sender, senderAddress));
                     }
                     offset += payloadByteLength;
                 }
@@ -625,39 +621,37 @@ namespace Lidgren.Network
         }
 
         internal void HandleIncomingDiscoveryRequest(
-            TimeSpan now, IPEndPoint senderEndPoint, int offset, int payloadByteLength)
+            TimeSpan now, NetAddress address, int offset, int payloadByteLength)
         {
             if (!Configuration.IsMessageTypeEnabled(NetIncomingMessageType.DiscoveryRequest))
                 return;
 
-            var dr = CreateIncomingMessage(NetIncomingMessageType.DiscoveryRequest);
+            var dr = CreateIncomingMessage(NetIncomingMessageType.DiscoveryRequest, address);
             if (payloadByteLength > 0)
                 dr.Write(_receiveBuffer.AsSpan(offset, payloadByteLength));
 
             dr.ReceiveTime = now;
-            dr.SenderEndPoint = senderEndPoint;
             ReleaseMessage(dr);
         }
 
         internal void HandleIncomingDiscoveryResponse(
-            TimeSpan now, IPEndPoint senderEndPoint, int offset, int payloadByteLength)
+            TimeSpan now, NetAddress address, int offset, int payloadByteLength)
         {
             if (!Configuration.IsMessageTypeEnabled(NetIncomingMessageType.DiscoveryResponse))
                 return;
 
-            var dr = CreateIncomingMessage(NetIncomingMessageType.DiscoveryResponse);
+            var dr = CreateIncomingMessage(NetIncomingMessageType.DiscoveryResponse, address);
             if (payloadByteLength > 0)
                 dr.Write(_receiveBuffer.AsSpan(offset, payloadByteLength));
 
             dr.ReceiveTime = now;
-            dr.SenderEndPoint = senderEndPoint;
             ReleaseMessage(dr);
         }
 
         private void ReceivedUnconnectedLibraryMessage(
-            TimeSpan now, IPEndPoint senderEndPoint, NetMessageType type, int offset, int payloadByteLength)
+            TimeSpan now, NetAddress senderAddress, NetMessageType type, int offset, int payloadByteLength)
         {
-            if (Handshakes.TryGetValue(senderEndPoint, out NetConnection? shake))
+            if (Handshakes.TryGetValue(senderAddress, out NetConnection? shake))
             {
                 shake.ReceivedHandshake(now, type, offset, payloadByteLength);
                 return;
@@ -667,11 +661,11 @@ namespace Lidgren.Network
             switch (type)
             {
                 case NetMessageType.Discovery:
-                    HandleIncomingDiscoveryRequest(now, senderEndPoint, offset, payloadByteLength);
+                    HandleIncomingDiscoveryRequest(now, senderAddress, offset, payloadByteLength);
                     return;
 
                 case NetMessageType.DiscoveryResponse:
-                    HandleIncomingDiscoveryResponse(now, senderEndPoint, offset, payloadByteLength);
+                    HandleIncomingDiscoveryResponse(now, senderAddress, offset, payloadByteLength);
                     return;
 
                 case NetMessageType.NatIntroduction:
@@ -681,13 +675,13 @@ namespace Lidgren.Network
 
                 case NetMessageType.NatPunchMessage:
                     if (Configuration.IsMessageTypeEnabled(NetIncomingMessageType.NatIntroductionSuccess))
-                        HandleNatPunch(offset, senderEndPoint);
+                        HandleNatPunch(offset, senderAddress.Clone());
                     return;
 
                 case NetMessageType.ConnectResponse:
-                    foreach ((IPEndPoint hsEndpoint, NetConnection hsconn) in Handshakes)
+                    foreach ((NetAddress hsAddress, NetConnection hsconn) in Handshakes)
                     {
-                        if (!hsEndpoint.Address.Equals(senderEndPoint.Address) ||
+                        if (!hsAddress.AddressEquals(senderAddress) ||
                             !hsconn._connectionInitiator)
                             continue;
 
@@ -695,14 +689,14 @@ namespace Lidgren.Network
                         // ... but we just received a ConnectResponse from XX.XX.XX.XX:Z
                         // Lets just assume the router decided to use this port instead
 
-                        ConnectionLookup.TryRemove(hsEndpoint, out _);
-                        Handshakes.TryRemove(hsEndpoint, out _);
+                        ConnectionLookup.TryRemove(hsAddress, out _);
+                        Handshakes.TryRemove(hsAddress, out _);
 
-                        hsconn.MutateEndPoint(senderEndPoint);
-                        LogDebug(new NetLogMessage(NetLogCode.HostPortChanged, null, hsconn, hsEndpoint));
+                        hsconn.MutateAddress(senderAddress.Clone());
+                        LogDebug(new NetLogMessage(NetLogCode.HostPortChanged, null, hsconn, hsconn.RemoteAddress));
 
-                        ConnectionLookup.TryAdd(senderEndPoint, hsconn);
-                        Handshakes.TryAdd(senderEndPoint, hsconn);
+                        ConnectionLookup.TryAdd(hsconn.RemoteAddress, hsconn);
+                        Handshakes.TryAdd(hsconn.RemoteAddress, hsconn);
 
                         hsconn.ReceivedHandshake(now, type, offset, payloadByteLength);
                         return;
@@ -713,16 +707,16 @@ namespace Lidgren.Network
                     if (!Configuration.AcceptIncomingConnections)
                     {
                         LogWarning(NetLogMessage.FromValues(NetLogCode.MessageTypeDisabled,
-                            endPoint: senderEndPoint, value: (int)type));
+                            endPoint: senderAddress, value: (int)type));
                         return;
                     }
                     // handle connect
                     // It's someone wanting to shake hands with us!
 
-                    NetConnection conn = new(this, senderEndPoint);
+                    NetConnection conn = new(this, senderAddress.Clone());
                     conn.Status = NetConnectionStatus.ReceivedInitiation;
 
-                    Handshakes.TryAdd(senderEndPoint, conn);
+                    Handshakes.TryAdd(conn.RemoteAddress, conn);
                     conn.ReceivedHandshake(now, type, offset, payloadByteLength);
                     return;
 
@@ -733,18 +727,18 @@ namespace Lidgren.Network
                 case NetMessageType.Disconnect:
                     // this is probably ok
                     LogWarning(NetLogMessage.FromValues(NetLogCode.UnconnectedLibraryMessage,
-                        endPoint: senderEndPoint, value: (int)type));
+                        endPoint: senderAddress, value: (int)type));
                     return;
 
                 case NetMessageType.Acknowledge:
                 case NetMessageType.Ping:
                     LogVerbose(NetLogMessage.FromValues(NetLogCode.UnhandledLibraryMessage,
-                        endPoint: senderEndPoint, value: (int)type));
+                        endPoint: senderAddress, value: (int)type));
                     break;
 
                 default:
                     LogWarning(NetLogMessage.FromValues(NetLogCode.UnhandledLibraryMessage,
-                        endPoint: senderEndPoint, value: (int)type));
+                        endPoint: senderAddress, value: (int)type));
                     return;
             }
         }
@@ -754,7 +748,7 @@ namespace Lidgren.Network
             // LogDebug("Accepted connection " + conn);
             connection.InitExpandMTU(NetTime.Now);
 
-            if (!Handshakes.TryRemove(connection.RemoteEndPoint, out _))
+            if (!Handshakes.TryRemove(connection.RemoteAddress, out _))
             {
                 LogWarning(new NetLogMessage(NetLogCode.MissingHandshake));
             }
@@ -770,7 +764,7 @@ namespace Lidgren.Network
 #endif
                 {
                     Connections.Add(connection);
-                    ConnectionLookup.TryAdd(connection.RemoteEndPoint, connection);
+                    ConnectionLookup.TryAdd(connection.RemoteAddress, connection);
                 }
             }
         }
