@@ -19,7 +19,10 @@ namespace Lidgren.Network
         private static ushort IPv4FamilyValue { get; } = GetAddressFamilyValue(AddressFamily.InterNetwork);
         private static ushort IPv6FamilyValue { get; } = GetAddressFamilyValue(AddressFamily.InterNetworkV6);
 
-        private static ReadOnlySpan<byte> IPv6LabelTemplate => new byte[12] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff };
+        private static ReadOnlySpan<byte> IPv6LabelTemplate => new byte[16] 
+        {
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff
+        };
 
         private static readonly IPEndPoint _epTemplate = new(IPAddress.None, 0);
 
@@ -218,6 +221,8 @@ namespace Lidgren.Network
             if (srcFamily == AddressFamily.InterNetworkV6)
             {
                 WriteTo(destination);
+
+                dstSpan.Slice(serializedSize).Clear();
             }
             else if (srcFamily == AddressFamily.InterNetwork)
             {
@@ -229,14 +234,25 @@ namespace Lidgren.Network
                 srcPort.CopyTo(dstSpan.Slice(PortOffset, sizeof(ushort)));
 
                 IPv6LabelTemplate.CopyTo(dstSpan.Slice(AddressOffset));
-                srcAddress.CopyTo(dstSpan.Slice(AddressOffset + IPv6LabelTemplate.Length));
+
+                Span<byte> dstAddress = dstSpan.Slice(AddressOffset + IPv6LabelTemplate.Length);
+                srcAddress.CopyTo(dstAddress);
+
+                dstAddress.Slice(srcAddress.Length).Clear();
             }
             else
             {
                 throw new NotSupportedException();
             }
+        }
 
-            dstSpan.Slice(0, serializedSize).Clear();
+        public override string ToString()
+        {
+            if (_address != null)
+            {
+                return _address.ToString();
+            }
+            return Family.ToString();
         }
 
         public static void WriteAddress(NetAddress destination, IPAddress address)
