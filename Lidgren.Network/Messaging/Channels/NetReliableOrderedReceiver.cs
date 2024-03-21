@@ -1,6 +1,4 @@
-﻿using System;
-
-namespace Lidgren.Network
+﻿namespace Lidgren.Network
 {
     internal sealed class NetReliableOrderedReceiver : NetReceiverChannel
     {
@@ -11,7 +9,7 @@ namespace Lidgren.Network
         public NetReliableOrderedReceiver(NetConnection connection, int windowSize)
             : base(connection, windowSize)
         {
-            WithheldMessages = Array.Empty<NetIncomingMessage>();
+            WithheldMessages = new NetIncomingMessage[windowSize];
         }
 
         private void AdvanceWindow()
