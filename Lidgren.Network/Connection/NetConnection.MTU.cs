@@ -11,7 +11,7 @@ namespace Lidgren.Network
             Finished
         }
 
-        private const int ProtocolMaxMTU = (int)((ushort.MaxValue / 8f) - 1f);
+        private const int ProtocolMaxMTU = (int) ((ushort.MaxValue / 8f) - 1f);
 
         private ExpandMTUStatus _expandMTUStatus;
         private int _largestSuccessfulMTU;
@@ -42,8 +42,14 @@ namespace Lidgren.Network
         private void MTUExpansionHeartbeat(TimeSpan now)
         {
             if (_expandMTUStatus == ExpandMTUStatus.Finished)
+            {
                 return;
+            }
+            TryExpandMTU(now);
+        }
 
+        private void TryExpandMTU(TimeSpan now)
+        {
             if (_expandMTUStatus == ExpandMTUStatus.None)
             {
                 if (!_peerConfiguration._autoExpandMTU)
@@ -53,6 +59,8 @@ namespace Lidgren.Network
                 }
 
                 // begin expansion
+                _expandMTUStatus = ExpandMTUStatus.InProgress;
+
                 ExpandMTU(now);
                 return;
             }
@@ -80,13 +88,13 @@ namespace Lidgren.Network
             if (_smallestFailedMTU == -1)
             {
                 // we've never encountered failure; expand by 25% each time
-                tryMTU = (int)(CurrentMTU * 1.25f);
+                tryMTU = (int) (CurrentMTU * 1.25f);
                 //m_peer.LogDebug("Trying MTU " + tryMTU);
             }
             else
             {
                 // we HAVE encountered failure; so try in between
-                tryMTU = (int)((_smallestFailedMTU + _largestSuccessfulMTU) / 2.0f);
+                tryMTU = (int) ((_smallestFailedMTU + _largestSuccessfulMTU) / 2.0f);
                 //m_peer.LogDebug("Trying MTU " + m_smallestFailedMTU + " <-> " + m_largestSuccessfulMTU + " = " + tryMTU);
             }
 
