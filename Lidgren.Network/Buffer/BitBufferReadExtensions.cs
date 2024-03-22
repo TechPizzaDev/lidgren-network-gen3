@@ -146,7 +146,7 @@ namespace Lidgren.Network
             where T : unmanaged
         {
             Unsafe.SkipInit(out value);
-            Span<T> span = MemoryMarshal.CreateSpan(ref value, 1);
+            Span<T> span = new(ref value);
             Span<byte> bytes = MemoryMarshal.AsBytes(span);
             return buffer.TryRead(bytes);
         }

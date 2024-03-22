@@ -560,7 +560,7 @@ namespace Lidgren.Network
         public static void Write<T>(this IBitBuffer buffer, in T value)
             where T : unmanaged
         {
-            ReadOnlySpan<T> span = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(value), 1);
+            ReadOnlySpan<T> span = new(in value);
             ReadOnlySpan<byte> bytes = MemoryMarshal.AsBytes(span);
             buffer.Write(bytes);
         }
