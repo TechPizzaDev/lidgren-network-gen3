@@ -95,7 +95,7 @@ namespace Lidgren.Network
         public void IncrementBitPosition(int bitCount)
         {
             Debug.Assert(bitCount >= 0);
-            
+
             _bitPosition += bitCount;
             this.SetLengthByPosition();
         }
@@ -109,11 +109,11 @@ namespace Lidgren.Network
         {
             if (_isRecyclableBuffer)
             {
-                StoragePool.Return(_buffer);
-                _buffer = Array.Empty<byte>();
+                RecycleBuffer();
             }
 
-            _buffer = buffer ?? throw new ArgumentNullException(nameof(buffer));
+            ArgumentNullException.ThrowIfNull(buffer, nameof(buffer));
+            _buffer = buffer;
             _isRecyclableBuffer = isRecyclable;
         }
 
@@ -127,12 +127,20 @@ namespace Lidgren.Network
         {
             if (_isRecyclableBuffer)
             {
-                StoragePool.Return(_buffer);
-                _buffer = Array.Empty<byte>();
+                RecycleBuffer();
+
                 _bitLength = 0;
                 _bitPosition = 0;
-                _isRecyclableBuffer = false;
             }
+        }
+
+        private void RecycleBuffer()
+        {
+            Debug.Assert(_isRecyclableBuffer);
+
+            StoragePool.Return(_buffer);
+            _buffer = Array.Empty<byte>();
+            _isRecyclableBuffer = false;
         }
 
         protected virtual void Dispose(bool disposing)
