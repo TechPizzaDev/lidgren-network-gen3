@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO.Pipelines;
 using System.Net;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -21,6 +22,11 @@ namespace Lidgren.Network
 
         public static int GetMTU(IEnumerable<NetConnection?> connections, out int recipientCount)
         {
+            if (connections is List<NetConnection?> list)
+            {
+                return GetMTU(list, out recipientCount);
+            }
+
             ArgumentNullException.ThrowIfNull(connections);
 
             int mtu = NetPeerConfiguration.DefaultMTU;
@@ -30,9 +36,25 @@ namespace Lidgren.Network
             {
                 if (conn != null)
                 {
-                    if (conn.CurrentMTU < mtu)
-                        mtu = conn.CurrentMTU;
+                    mtu = Math.Min(conn.CurrentMTU, mtu);
+                    recipientCount++;
+                }
+            }
+            return mtu;
+        }
 
+        public static int GetMTU(List<NetConnection?> connections, out int recipientCount)
+        {
+            ArgumentNullException.ThrowIfNull(connections);
+
+            int mtu = NetPeerConfiguration.DefaultMTU;
+            recipientCount = 0;
+
+            foreach (NetConnection? conn in CollectionsMarshal.AsSpan(connections))
+            {
+                if (conn != null)
+                {
+                    mtu = Math.Min(conn.CurrentMTU, mtu);
                     recipientCount++;
                 }
             }
