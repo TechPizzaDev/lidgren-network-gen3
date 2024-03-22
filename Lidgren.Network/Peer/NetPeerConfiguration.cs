@@ -81,7 +81,7 @@ namespace Lidgren.Network
             _networkThreadName = "Lidgren Network Thread";
             _localAddress = IPAddress.Any;
             _broadcastAddress = NetUtility.RetrieveBroadcastAddress() ?? IPAddress.Broadcast;
-            _storagePool = ArrayPool<byte>.Create();
+            _storagePool = ArrayPool<byte>.Create(NetConnection.ProtocolMaxMTU, 1024);
 
             _port = 0;
             _receiveBufferSize = 131071;
