@@ -246,20 +246,18 @@ namespace Lidgren.Network
             message._messageType = NetMessageType.Unconnected;
             message._isSent = true;
 
-            int recipientCount = 0;
-            foreach (NetAddress recipient in recipients.AsListEnumerator())
-            {
-                if (!recipient.IsEmpty)
-                    recipientCount++;
-            }
-            Interlocked.Add(ref message._recyclingCount, recipientCount);
-
             foreach (NetAddress endPoint in recipients.AsListEnumerator())
             {
                 if (!endPoint.IsEmpty)
                 {
+                    Interlocked.Increment(ref message._recyclingCount);
                     UnsentUnconnectedMessages.Enqueue((endPoint, message));
                 }
+            }
+
+            if (message._recyclingCount == 0)
+            {
+                Recycle(message);
             }
         }
 

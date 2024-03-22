@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 
@@ -64,6 +65,7 @@ namespace Lidgren.Network
 
         private void AddCapacity(int baseLength)
         {
+            // TODO: align length?
             int newLength = Math.Min(Math.Max(16, baseLength * ArrayGrowthFactor), baseLength + ArrayMaxGrowth);
             SetCapacity(newLength);
         }
@@ -102,15 +104,11 @@ namespace Lidgren.Network
             try
             {
                 int expectedCount = Count;
-                if (items is ICollection<T> coll)
-                    expectedCount += coll.Count;
-                else if (items is IReadOnlyCollection<T> roColl)
-                    expectedCount += roColl.Count;
-
+                if (items.TryGetNonEnumeratedCount(out int itemCount))
+                    expectedCount += itemCount;
+                
                 if (expectedCount > Capacity)
                     AddCapacity(expectedCount);
-
-                // TODO: possibly optimize when Count is known
 
                 foreach (T item in items.AsListEnumerator())
                 {

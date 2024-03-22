@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 
@@ -46,11 +47,7 @@ namespace Lidgren.Network
 
         public static List<NetConnection> Rent(IEnumerable<NetConnection?> recipients)
         {
-            int count = 0;
-            if (recipients is ICollection<NetConnection> coll)
-                count = coll.Count;
-            else if (recipients is IReadOnlyCollection<NetConnection> roColl)
-                count = roColl.Count;
+            _ = recipients.TryGetNonEnumeratedCount(out int count);
 
             List<NetConnection> list = Rent(count);
             foreach (NetConnection? recipient in recipients.AsListEnumerator())
@@ -124,7 +121,7 @@ namespace Lidgren.Network
             // Buffers are bucketed so that a request between 2^(n-1) + 1 and 2^n is given a buffer of 2^n
             // Bucket index is log2(bufferSize - 1) with the exception that buffers between length 1 and 16
             // are combined, and the index is slid down by 3 to compensate.
-            return BitOperations.Log2((uint)capacity - 1 | 15) - 3;
+            return BitOperations.Log2((uint) capacity - 1 | 15) - 3;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
