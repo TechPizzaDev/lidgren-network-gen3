@@ -108,6 +108,11 @@ namespace Lidgren.Network
                         retval = result; // return "worst" result
                 }
 
+                if (Interlocked.Decrement(ref chunk._recyclingCount) == 0)
+                {
+                    Recycle(chunk);
+                }
+
                 bitsLeft -= bitsPerChunk;
             }
             return retval;
@@ -171,7 +176,6 @@ namespace Lidgren.Network
                     reader.AdvanceTo(consumedBuffer.End);
 
                     LidgrenException.Assert(chunk.GetEncodedSize() <= mtu);
-                    Interlocked.Add(ref chunk._recyclingCount, 1);
 
                     var (result, channel) = SendChunk(chunk);
                     if (result == NetSendResult.Queued)

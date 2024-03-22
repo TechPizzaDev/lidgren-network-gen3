@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Threading;
 
 namespace Lidgren.Network
 {
@@ -118,6 +119,7 @@ namespace Lidgren.Network
             om._messageType = NetMessageType.ExpandMTURequest;
             int length = 0;
             om.Encode(Peer._sendBuffer, ref length, 0);
+            Interlocked.Decrement(ref om._recyclingCount);
             Peer.Recycle(om);
 
             if (!Peer.SendMTUPacket(length, RemoteEndPoint))
@@ -168,6 +170,7 @@ namespace Lidgren.Network
             om._messageType = NetMessageType.ExpandMTUSuccess;
             int length = 0;
             om.Encode(Peer._sendBuffer, ref length, 0);
+            Interlocked.Decrement(ref om._recyclingCount);
             Peer.Recycle(om);
 
             Peer.SendPacket(length, RemoteAddress, 1);

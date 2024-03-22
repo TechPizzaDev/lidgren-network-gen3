@@ -262,6 +262,8 @@ namespace Lidgren.Network
             message._messageType = NetMessageType.Unconnected;
             message._isSent = true;
 
+            Interlocked.Increment(ref message._recyclingCount);
+
             foreach (NetAddress endPoint in recipients.AsListEnumerator())
             {
                 if (!endPoint.IsEmpty)
@@ -271,7 +273,7 @@ namespace Lidgren.Network
                 }
             }
 
-            if (message._recyclingCount == 0)
+            if (Interlocked.Decrement(ref message._recyclingCount) == 0)
             {
                 Recycle(message);
             }
@@ -292,7 +294,11 @@ namespace Lidgren.Network
             message._isSent = true;
 
             if (!Configuration.IsMessageTypeEnabled(NetIncomingMessageType.UnconnectedData))
+            {
+                Interlocked.Decrement(ref message._recyclingCount);
+                Recycle(message);
                 return; // dropping unconnected message since it's not enabled for receiving
+            }
 
             var om = CreateIncomingMessage(NetIncomingMessageType.UnconnectedData);
             om.Write(message);

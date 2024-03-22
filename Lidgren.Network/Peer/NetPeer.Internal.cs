@@ -404,9 +404,10 @@ namespace Lidgren.Network
                         break;
                     }
 
-                    Interlocked.Decrement(ref om._recyclingCount);
-                    if (om._recyclingCount <= 0)
+                    if (Interlocked.Decrement(ref om._recyclingCount) == 0)
+                    {
                         Recycle(om);
+                    }
                 }
             }
 

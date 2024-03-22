@@ -23,6 +23,7 @@ namespace Lidgren.Network
                 Interlocked.Increment(ref Statistics._outgoingAllocated);
             }
 
+            message._recyclingCount = 1;
             return message;
         }
 
@@ -116,6 +117,7 @@ namespace Lidgren.Network
         internal void Recycle(NetOutgoingMessage message)
         {
             Debug.Assert(message != null);
+            Debug.Assert(message._recyclingCount == 0);
 
             message.Reset();
             message.TrimExcess();

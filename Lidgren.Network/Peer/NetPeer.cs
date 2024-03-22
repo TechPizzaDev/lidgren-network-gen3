@@ -169,7 +169,7 @@ namespace Lidgren.Network
             IPEndPoint endPoint, [MaybeNullWhen(false)] out NetConnection? connection)
         {
             Debug.Assert(endPoint != null);
-         
+
             return ConnectionLookup.TryGetValue(new NetAddress(endPoint), out connection);
         }
 
@@ -281,6 +281,11 @@ namespace Lidgren.Network
 
             int length = 0;
             message.Encode(_sendBuffer, ref length, 0);
+            if (Interlocked.Decrement(ref message._recyclingCount) == 0)
+            {
+                Recycle(message);
+            }
+
             SendPacket(length, recipient, 1);
         }
 

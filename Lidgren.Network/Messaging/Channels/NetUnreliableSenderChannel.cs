@@ -10,7 +10,7 @@ namespace Lidgren.Network
     {
         private bool _doFlowControl;
 
-        public NetUnreliableSenderChannel(NetConnection connection, int windowSize, NetDeliveryMethod method) : 
+        public NetUnreliableSenderChannel(NetConnection connection, int windowSize, NetDeliveryMethod method) :
             base(connection, windowSize)
         {
             _doFlowControl = true;
@@ -92,9 +92,10 @@ namespace Lidgren.Network
             {
                 _sendStart = NetUtility.PowOf2Mod(seqNr + 1, NetConstants.SequenceNumbers);
 
-                Interlocked.Decrement(ref message._recyclingCount);
-                if (message._recyclingCount <= 0)
+                if (Interlocked.Decrement(ref message._recyclingCount) == 0)
+                {
                     connection.Peer.Recycle(message);
+                }
             }
             return sendResult;
         }
