@@ -55,18 +55,18 @@ namespace Lidgren.Network
             // 15 bits - Sequence number
             // 16 bits - Payload length in bits
 
-            destination[offset++] = (byte)_messageType;
-            destination[offset++] = (byte)((_fragmentGroup == 0 ? 0 : 1) | (sequenceNumber << 1));
-            destination[offset++] = (byte)(sequenceNumber >> 7);
+            destination[offset++] = (byte) _messageType;
+            destination[offset++] = (byte) ((_fragmentGroup == 0 ? 0 : 1) | (sequenceNumber << 1));
+            destination[offset++] = (byte) (sequenceNumber >> 7);
 
+            int srcOffset;
             if (_fragmentGroup == 0)
             {
-                destination[offset++] = (byte)BitLength;
-                destination[offset++] = (byte)(BitLength >> 8);
+                ushort bitLength = checked((ushort) BitLength);
+                destination[offset++] = (byte) bitLength;
+                destination[offset++] = (byte) (bitLength >> 8);
 
-                int byteLen = NetBitWriter.BytesForBits(BitLength);
-                GetBuffer().AsSpan(0, byteLen).CopyTo(destination[offset..]);
-                offset += byteLen;
+                srcOffset = 0;
             }
             else
             {
@@ -79,14 +79,16 @@ namespace Lidgren.Network
                 int hdrLen = offset - baseOffset - 2;
 
                 // write length
-                int actualBitLength = BitLength + (hdrLen * 8);
-                destination[baseOffset] = (byte)actualBitLength;
-                destination[baseOffset + 1] = (byte)(actualBitLength >> 8);
+                ushort actualBitLength = checked((ushort) (BitLength + (hdrLen * 8)));
+                destination[baseOffset + 0] = (byte) actualBitLength;
+                destination[baseOffset + 1] = (byte) (actualBitLength >> 8);
 
-                int byteLen = NetBitWriter.BytesForBits(BitLength);
-                GetBuffer().AsSpan(_fragmentChunkNumber * _fragmentChunkByteSize, byteLen).CopyTo(destination[offset..]);
-                offset += byteLen;
+                srcOffset = _fragmentChunkNumber * _fragmentChunkByteSize;
             }
+
+            int byteLen = NetBitWriter.BytesForBits(BitLength);
+            GetBuffer().AsSpan(srcOffset, byteLen).CopyTo(destination[offset..]);
+            offset += byteLen;
         }
 
         internal void AssertNotSent(string? paramName = null)
