@@ -6,6 +6,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.IO.Pipelines;
 using System.Net;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Lidgren.Network
@@ -375,20 +376,9 @@ namespace Lidgren.Network
         /// </summary>
         /// <param name="message">The message to stream.</param>
         /// <param name="sequenceChannel">Sequence channel within the delivery method</param>
-        public ValueTask<NetSendResult> StreamMessageAsync(PipeReader message, int sequenceChannel)
+        public ValueTask<NetSendResult> StreamMessageAsync(PipeReader message, int sequenceChannel, CancellationToken cancellationToken)
         {
-            // This method is not async as Peer.StreamMessageAsync() captures recipients-
-            // This recipient list does not need to persist.
-            List<NetConnection> recipientList = NetConnectionListPool.Rent(1);
-            try
-            {
-                recipientList.Add(this);
-                return Peer.StreamMessageAsync(message, recipientList, sequenceChannel);
-            }
-            finally
-            {
-                NetConnectionListPool.Return(recipientList);
-            }
+            return Peer.SendFragmentedMessageAsync(message, this, sequenceChannel, cancellationToken);
         }
 
         // called by SendMessage() and NetPeer.SendMessage; ie. may be user thread

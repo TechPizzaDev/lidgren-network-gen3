@@ -5,6 +5,7 @@ using System.IO.Pipelines;
 using System.Threading.Tasks;
 using System.Buffers;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 
 namespace Lidgren.Network
 {
@@ -58,18 +59,12 @@ namespace Lidgren.Network
         // the message must not be sent already
         private NetSendResult SendFragmentedMessage(
             NetOutgoingMessage message,
-            IEnumerable<NetConnection?> recipients,
+            List<NetConnection> recipients,
             NetDeliveryMethod method,
             int sequenceChannel)
         {
             // determine minimum mtu for all recipients
-            int mtu = GetMTU(recipients, out int recipientCount);
-            if (recipientCount == 0)
-            {
-                Recycle(message);
-                return NetSendResult.NoRecipients;
-            }
-
+            int mtu = GetMTU(recipients!, out _);
             int group = GetNextFragmentGroup();
 
             // do not send msg; but set fragmentgroup in case user tries to recycle it immediately
@@ -104,13 +99,10 @@ namespace Lidgren.Network
                 LidgrenException.Assert(chunk.BitLength != 0);
                 LidgrenException.Assert(chunk.GetEncodedSize() <= mtu);
 
-                Interlocked.Add(ref chunk._recyclingCount, recipientCount);
+                Interlocked.Add(ref chunk._recyclingCount, recipients.Count);
 
-                foreach (NetConnection? recipient in recipients.AsListEnumerator())
+                foreach (NetConnection recipient in CollectionsMarshal.AsSpan(recipients))
                 {
-                    if (recipient == null)
-                        continue;
-
                     NetSendResult result = recipient.EnqueueMessage(chunk, method, sequenceChannel).Result;
                     if (result > retval)
                         retval = result; // return "worst" result
@@ -131,8 +123,10 @@ namespace Lidgren.Network
             return chunk;
         }
 
-        // on user thread
-        private async ValueTask<NetSendResult> SendFragmentedMessageAsync(
+        /// <remarks>
+        /// Called on user thread.
+        /// </remarks>
+        internal async ValueTask<NetSendResult> SendFragmentedMessageAsync(
             PipeReader reader,
             NetConnection recipient,
             int sequenceChannel,
@@ -376,7 +370,7 @@ namespace Lidgren.Network
             FlushResult result = await info.Pipe.Writer.FlushAsync();
             if (result.IsCompleted)
             {
-                // TODO: send NetStreamFragmentType.Cancelled message
+                // TODO: send NetStreamFragmentType.Cancelled message?
             }
         }
     }

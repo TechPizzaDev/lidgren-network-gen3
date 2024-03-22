@@ -98,15 +98,10 @@ namespace Lidgren.Network
                     return NetSendResult.FailedNotConnected;
 
                 List<NetConnection> recipients = NetConnectionListPool.Rent(1);
-                try
-                {
-                    recipients.Add(recipient);
-                    return SendFragmentedMessage(message, recipients, method, sequenceChannel);
-                }
-                finally
-                {
-                    NetConnectionListPool.Return(recipients);
-                }
+                recipients.Add(recipient);
+                NetSendResult result = SendFragmentedMessage(message, recipients, method, sequenceChannel);
+                NetConnectionListPool.Return(recipients);
+                return result;
             }
         }
 
@@ -146,35 +141,36 @@ namespace Lidgren.Network
             message.AssertNotSent(nameof(message));
             message._isSent = true;
 
-            int mtu = GetMTU(recipients, out int recipientCount);
-            if (recipientCount == 0)
+            List<NetConnection> recipientList = NetConnectionListPool.Rent(recipients);
+            int mtu = GetMTU(recipientList!, out _);
+            if (recipientList.Count == 0)
             {
+                NetConnectionListPool.Return(recipientList);
                 Recycle(message);
                 return NetSendResult.NoRecipients;
             }
 
+            var retval = NetSendResult.Sent;
             int length = message.GetEncodedSize();
             if (length <= mtu)
             {
-                Interlocked.Add(ref message._recyclingCount, recipientCount);
+                Interlocked.Add(ref message._recyclingCount, recipientList.Count);
 
-                var retval = NetSendResult.Sent;
-                foreach (NetConnection? conn in recipients.AsListEnumerator())
+                foreach (NetConnection conn in CollectionsMarshal.AsSpan(recipientList))
                 {
-                    if (conn == null)
-                        continue;
-
                     NetSendResult result = conn.EnqueueMessage(message, method, sequenceChannel).Result;
                     if (result > retval)
                         retval = result; // return "worst" result
                 }
-                return retval;
             }
             else
             {
                 // message must be fragmented!
-                return SendFragmentedMessage(message, recipients, method, sequenceChannel);
+                retval = SendFragmentedMessage(message, recipientList, method, sequenceChannel);
             }
+
+            NetConnectionListPool.Return(recipientList);
+            return retval;
         }
 
         /// <summary>
@@ -183,28 +179,26 @@ namespace Lidgren.Network
         /// <param name="message">The message to stream.</param>
         /// <param name="recipients">The list of recipients to send to.</param>
         /// <param name="sequenceChannel">Sequence channel within <see cref="NetDeliveryMethod.ReliableOrdered"/>.</param>
-        public async ValueTask<NetSendResult> StreamMessageAsync(
+        public ValueTask<NetSendResult> StreamMessageAsync(
             PipeReader message,
             IEnumerable<NetConnection?> recipients,
             int sequenceChannel,
             CancellationToken cancellationToken = default)
         {
             List<NetConnection> recipientList = NetConnectionListPool.Rent(recipients);
-            try
-            {
-                if (recipientList.Count == 0)
-                    return NetSendResult.NoRecipients;
-
-                if (recipientList.Count > 1)
-                    throw new NotImplementedException("The method can only send to one recipient at the time.");
-
-                return await SendFragmentedMessageAsync(message, recipientList[0], sequenceChannel, cancellationToken)
-                    .ConfigureAwait(false);
-            }
-            finally
+            if (recipientList.Count == 0)
             {
                 NetConnectionListPool.Return(recipientList);
+                return new(NetSendResult.NoRecipients);
             }
+
+            if (recipientList.Count > 1)
+            {
+                NetConnectionListPool.Return(recipientList);
+                throw new NotImplementedException("This method can only send to one recipient at a time.");
+            }
+
+            return SendFragmentedMessageAsync(message, recipientList[0], sequenceChannel, cancellationToken);
         }
 
         private void CheckUnconnectedMessage(NetOutgoingMessage message)
